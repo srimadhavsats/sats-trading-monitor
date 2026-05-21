@@ -11,3 +11,7 @@ DEFAULT_WHALE_THRESHOLDS = {"BTC/USDT": 0.1, "ETH/USDT": 1.0, "1000SATS/USDT": 5
 # Network connection and pipeline interval parameters
 CONNECTION_TIMEOUT_SECONDS = 10.0
 STREAM_HEARTBEAT_DELAY = 1.0
+
+# Cross-Origin Resource Sharing (CORS) Security Policies
+# Can be updated to localized client origins (e.g., ["http://localhost:5174"]) in production
+ALLOWED_ORIGINS = ["*"]
