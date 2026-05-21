@@ -4,6 +4,7 @@ import httpx
 
 # Import centralized configuration parameters
 from config import (
+    ALLOWED_ORIGINS,
     BYBIT_API_URL,
     CONNECTION_TIMEOUT_SECONDS,
     DEFAULT_WHALE_THRESHOLDS,
@@ -34,9 +35,10 @@ app = FastAPI(
 )
 
 # Cross-Origin Resource Sharing (CORS) security configuration
+# Consuming network configurations from centralized settings module
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
