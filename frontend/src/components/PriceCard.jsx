@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
-// Import the centralized configuration mapping
+// Import centralized config and theme mappings
 import { CONFIG } from "../config";
-// Import the centralized telemetry formatting utilities
+import { THEME } from "../theme";
+// Import centralized telemetry formatting utilities
 import { formatMarketPrice } from "../utils/formatters";
 
 const lineCommand = (point, i, a) => {
@@ -103,7 +104,7 @@ const PriceCard = () => {
     );
   }
 
-  // Charting Logic
+  // Charting Logic & Velocity Theme Assignment
   const currentHistory =
     history.length > 0 ? history : [data.price, data.price];
   const minPrice = Math.min(...currentHistory);
@@ -113,7 +114,11 @@ const PriceCard = () => {
   const prevPrice =
     history.length > 1 ? history[history.length - 2] : data.price;
   const isDropping = data.price < prevPrice;
-  const velocityColor = isDropping ? "#fb923c" : "#10b981";
+
+  // Consuming design tokens instead of raw string definitions
+  const velocityColor = isDropping
+    ? THEME.velocity.bearish
+    : THEME.velocity.bullish;
 
   const getPlotY = (price) => 128 - ((price - chartMin) / priceRange) * 128;
   const points = currentHistory.map((p, i) => [
@@ -142,7 +147,7 @@ const PriceCard = () => {
             {data.symbol || selectedSymbol}
           </h3>
           <div
-            className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase flex items-center gap-1 ${connected ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}
+            className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase flex items-center gap-1 ${connected ? THEME.status.online : THEME.status.offline}`}
           >
             <span className={connected ? "animate-pulse" : ""}>●</span>
             {connected ? "Live" : "Offline"}
@@ -168,14 +173,14 @@ const PriceCard = () => {
           <path
             d={`${dAttr} L 384,128 L 0,128 Z`}
             fill={velocityColor}
-            fillOpacity="0.1"
+            fillOpacity={THEME.chart.fillOpacity}
             className="transition-all duration-1000"
           />
           <path
             d={dAttr}
             fill="none"
             stroke={velocityColor}
-            strokeWidth="2"
+            strokeWidth={THEME.chart.strokeWidth}
             className="transition-all duration-1000"
           />
         </svg>
