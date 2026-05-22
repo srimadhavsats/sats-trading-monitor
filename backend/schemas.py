@@ -36,3 +36,44 @@ class ErrorResponse(BaseModel):
                 "details": "The remote exchange mirror connection timed out after 10.0 seconds.",
             }
         }
+
+
+class MarketStreamPayload(BaseModel):
+    """Formal architectural schema contract for high-frequency live price ticks."""
+
+    symbol: str = Field(
+        ..., description="The unified trading pair identifier (e.g., BTC/USDT)"
+    )
+    price: float = Field(
+        ..., description="The latest spot execution price from the liquidity node"
+    )
+    high: float = Field(..., description="The rolling 24-hour high price ceiling value")
+    low: float = Field(..., description="The rolling 24-hour low price floor value")
+    volume: float = Field(
+        ..., description="The accumulated 24-hour liquidity pool turnover metric"
+    )
+    change: float = Field(
+        ..., description="The calculated 24-hour price delta percentage change"
+    )
+    is_whale: bool = Field(..., description="Whale detection boolean flag state")
+    whale_alert: bool = Field(
+        ..., description="System broadcast flag for exceptional order visibility"
+    )
+    whale_threshold: float = Field(
+        ..., description="The calibrated boundary limit marking a whale deviation"
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "symbol": "BTC/USDT",
+                "price": 68250.50,
+                "high": 69100.00,
+                "low": 67400.25,
+                "volume": 125040032.12,
+                "change": 1.25,
+                "is_whale": False,
+                "whale_alert": False,
+                "whale_threshold": 0.1,
+            }
+        }
