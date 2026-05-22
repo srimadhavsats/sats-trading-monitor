@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from logger import SentinelLogger
 
 # Import formalized data validation schemas
-from schemas import HealthCheckResponse
+from schemas import HealthCheckResponse, MarketStreamPayload
 
 # --------------------------------------------------------------------
 # Configuration & Threshold Mappings
@@ -35,7 +35,6 @@ app = FastAPI(
 )
 
 # Cross-Origin Resource Sharing (CORS) security configuration
-# Consuming network configurations from centralized settings module
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -116,8 +115,8 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str):
                         clean_key = symbol.replace("-", "/")
                         threshold = WHALE_THRESHOLDS.get(clean_key, 0)
 
-                        # Structured analytical payload generation
-                        payload = {
+                        # Structured raw data accumulation
+                        raw_payload = {
                             "symbol": clean_key,
                             "price": price,
                             "high": float(result.get("highPrice24h", 0)),
@@ -129,7 +128,11 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str):
                             "whale_threshold": threshold,
                         }
 
-                        await websocket.send_json(payload)
+                        # Enforce schema integrity and type serialization at the stream gateway
+                        validated_data = MarketStreamPayload(**raw_payload)
+
+                        # Broadcast the strictly serialized data contract model to the client
+                        await websocket.send_json(validated_data.model_dump())
                         SentinelLogger.broadcast(clean_key, price)
 
                 else:
