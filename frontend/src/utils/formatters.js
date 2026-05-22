@@ -43,3 +43,19 @@ export const formatTimestamp = (dateInput) => {
     second: "2-digit",
   });
 };
+
+/**
+ * Formats large financial figures (e.g., turnover/volume) into a compact localized string.
+ * Automatically converts raw values into human-readable notation (e.g., $125.04M, $450.20K).
+ * @param {number} volume - The raw volume float value from the stream oracle.
+ * @returns {string} Compact formatted financial notation string.
+ */
+export const formatCompactVolume = (volume) => {
+  if (!volume) return "$0.00";
+  return new Intl.NumberFormat(undefined, {
+    notation: "compact",
+    compactDisplay: "short",
+    style: "currency",
+    currency: "USD",
+  }).format(volume);
+};
