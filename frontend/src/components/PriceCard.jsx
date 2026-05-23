@@ -2,8 +2,8 @@ import React, { useState, useEffect } from "react";
 // Import centralized config and theme mappings
 import { CONFIG } from "../config";
 import { THEME } from "../theme";
-// Import centralized telemetry formatting utilities
-import { formatMarketPrice } from "../utils/formatters";
+// Import centralized telemetry formatting utilities including compact volume
+import { formatMarketPrice, formatCompactVolume } from "../utils/formatters";
 
 const lineCommand = (point, i, a) => {
   const [x, y] = point;
@@ -12,7 +12,7 @@ const lineCommand = (point, i, a) => {
   const cpx1 = px + (x - px) * 0.5;
   const cpy1 = py;
   const cpx2 = x - (x - px) * 0.5;
-  const cpy2 = y; // Fixed typo here from cpx2 to cpy2
+  const cpy2 = y;
   return `C ${cpx1},${cpy1} ${cpx2},${cpy2} ${x},${y}`;
 };
 
@@ -193,6 +193,16 @@ const PriceCard = () => {
           </p>
           <p className="text-[11px] font-mono font-black text-neutral-300">
             Singapore / Bybit
+          </p>
+        </div>
+
+        {/* Formatted Compact Volume Data Placement */}
+        <div className="flex flex-col gap-1 text-right">
+          <p className="text-neutral-600 text-[8px] font-black uppercase tracking-widest">
+            24H Turnover
+          </p>
+          <p className="text-[11px] font-mono font-black text-neutral-200">
+            {formatCompactVolume(data.volume)}
           </p>
         </div>
       </div>
