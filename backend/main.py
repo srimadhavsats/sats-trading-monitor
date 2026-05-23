@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # Import the centralized telemetry engine logger
 from logger import SentinelLogger
 
-# Import formalized data validation schemas
+# Import formalized data validation schemas including MarketStreamPayload
 from schemas import HealthCheckResponse, MarketStreamPayload
 
 # --------------------------------------------------------------------
@@ -115,8 +115,8 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str):
                         clean_key = symbol.replace("-", "/")
                         threshold = WHALE_THRESHOLDS.get(clean_key, 0)
 
-                        # Structured raw data accumulation
-                        raw_payload = {
+                        # Structured analytical payload generation
+                        payload = {
                             "symbol": clean_key,
                             "price": price,
                             "high": float(result.get("highPrice24h", 0)),
@@ -128,11 +128,11 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str):
                             "whale_threshold": threshold,
                         }
 
-                        # Enforce schema integrity and type serialization at the stream gateway
-                        validated_data = MarketStreamPayload(**raw_payload)
+                        # Enforce validation schema parsing at the active WebSocket channel border
+                        validated_payload = MarketStreamPayload(**payload)
 
                         # Broadcast the strictly serialized data contract model to the client
-                        await websocket.send_json(validated_data.model_dump())
+                        await websocket.send_json(validated_payload.model_dump())
                         SentinelLogger.broadcast(clean_key, price)
 
                 else:
