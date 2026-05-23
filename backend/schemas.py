@@ -74,6 +74,6 @@ class MarketStreamPayload(BaseModel):
                 "change": 1.25,
                 "is_whale": False,
                 "whale_alert": False,
-                "whale_threshold": 0.1,
+                "whale_threshold": 500000.0,
             }
         }
