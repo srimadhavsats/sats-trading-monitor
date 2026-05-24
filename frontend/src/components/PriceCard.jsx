@@ -4,6 +4,8 @@ import { CONFIG } from "../config";
 import { THEME } from "../theme";
 // Import centralized telemetry formatting utilities including compact volume
 import { formatMarketPrice, formatCompactVolume } from "../utils/formatters";
+// Import centralized client storage abstraction layer
+import { storage } from "../utils/storage";
 
 const lineCommand = (point, i, a) => {
   const [x, y] = point;
@@ -17,7 +19,10 @@ const lineCommand = (point, i, a) => {
 };
 
 const PriceCard = () => {
-  const [selectedSymbol, setSelectedSymbol] = useState("BTC-USDT");
+  // Initialize state from local memory abstraction to lock preferences across sessions
+  const [selectedSymbol, setSelectedSymbol] = useState(() =>
+    storage.get("selected_symbol", "BTC-USDT"),
+  );
   const [data, setData] = useState(null);
   const [connected, setConnected] = useState(false);
   const [history, setHistory] = useState([]);
@@ -94,6 +99,12 @@ const PriceCard = () => {
     };
   }, [selectedSymbol]);
 
+  // Intercept selection events to persist choices before component re-mount loops
+  const handleSymbolChange = (sym) => {
+    setSelectedSymbol(sym);
+    storage.set("selected_symbol", sym);
+  };
+
   if (!data) {
     return (
       <div className="p-6 border border-neutral-800 rounded-2xl bg-neutral-900/40 w-96 animate-pulse flex flex-col justify-center items-center h-80">
@@ -133,7 +144,7 @@ const PriceCard = () => {
         {["BTC-USDT", "ETH-USDT"].map((sym) => (
           <button
             key={sym}
-            onClick={() => setSelectedSymbol(sym)}
+            onClick={() => handleSymbolChange(sym)}
             className={`text-[8px] font-black px-2 py-1 rounded border transition-all ${selectedSymbol === sym ? "bg-neutral-100 text-black border-neutral-100" : "bg-transparent text-neutral-500 border-neutral-800 hover:border-neutral-600"}`}
           >
             {sym.split("-")[0]}
@@ -196,7 +207,6 @@ const PriceCard = () => {
           </p>
         </div>
 
-        {/* Formatted Compact Volume Data Placement */}
         <div className="flex flex-col gap-1 text-right">
           <p className="text-neutral-600 text-[8px] font-black uppercase tracking-widest">
             24H Turnover
