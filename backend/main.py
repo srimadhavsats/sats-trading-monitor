@@ -10,17 +10,20 @@ from config import (
     DEFAULT_WHALE_THRESHOLDS,
     STREAM_HEARTBEAT_DELAY,
 )
+
+# Import the new decoupled websocket connection manager instance
+from connection_manager import ConnectionManager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import the centralized telemetry engine logger
 from logger import SentinelLogger
 
-# Import formalized data validation schemas including MarketStreamPayload
+# Import formalized data validation schemas
 from schemas import HealthCheckResponse, MarketStreamPayload
 
 # --------------------------------------------------------------------
-# Configuration & Threshold Mappings
+# Configuration & State Instantiations
 # --------------------------------------------------------------------
 try:
     from ui_layout import WHALE_THRESHOLDS
@@ -33,6 +36,9 @@ app = FastAPI(
     description="High-frequency market data streaming oracle via WebSockets",
     version="4.1",
 )
+
+# Instantiate the global connection coordinator
+manager = ConnectionManager()
 
 # Cross-Origin Resource Sharing (CORS) security configuration
 app.add_middleware(
@@ -79,10 +85,11 @@ async def startup_event():
 @app.websocket("/ws/price/{symbol}")
 async def websocket_endpoint(websocket: WebSocket, symbol: str):
     """
-    Asynchronous WebSocket stream handler. Establishes a persistent full-duplex
-    connection to calculate tracking metrics and broadcast live payload states.
+    Asynchronous WebSocket stream handler. Handshakes connections using ConnectionManager
+    and broadcasts validated JSON telemetry objects to subscribers down-stream.
     """
-    await websocket.accept()
+    # Register connection state to the centralized manager
+    await manager.connect(websocket, symbol)
 
     # Normalize incoming pairs (e.g., BTC-USDT -> BTCUSDT) to comply with API schemas
     api_symbol = symbol.replace("-", "")
@@ -115,7 +122,7 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str):
                         clean_key = symbol.replace("-", "/")
                         threshold = WHALE_THRESHOLDS.get(clean_key, 0)
 
-                        # Structured analytical payload generation
+                        # Structured raw payload configuration
                         payload = {
                             "symbol": clean_key,
                             "price": price,
@@ -128,11 +135,13 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str):
                             "whale_threshold": threshold,
                         }
 
-                        # Enforce validation schema parsing at the active WebSocket channel border
+                        # Parse and enforce data validation schemas
                         validated_payload = MarketStreamPayload(**payload)
 
-                        # Broadcast the strictly serialized data contract model to the client
-                        await websocket.send_json(validated_payload.model_dump())
+                        # Broadcast payload data out across all connection points tracking this symbol
+                        await manager.broadcast_to_symbol(
+                            symbol, validated_payload.model_dump()
+                        )
                         SentinelLogger.broadcast(clean_key, price)
 
                 else:
@@ -140,13 +149,11 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str):
                         f"Oracle Edge API Connection Warning: Status {response.status_code}"
                     )
 
-                await asyncio.sleep(
-                    STREAM_HEARTBEAT_DELAY
-                )  # Managed via centralized constants
+                await asyncio.sleep(STREAM_HEARTBEAT_DELAY)
 
     except WebSocketDisconnect:
-        SentinelLogger.info(
-            f"Network Handshake Terminated: Client disconnected from channel [{symbol}]."
-        )
+        # Clean up registration states from global memory map upon termination
+        manager.disconnect(websocket, symbol)
     except Exception as e:
         SentinelLogger.error(f"Internal Pipeline Telemetry Exception: {e}")
+        manager.disconnect(websocket, symbol)
