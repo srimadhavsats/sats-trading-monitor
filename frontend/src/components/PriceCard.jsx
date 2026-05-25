@@ -2,8 +2,8 @@ import React, { useState, useEffect } from "react";
 // Import centralized config and theme mappings
 import { CONFIG } from "../config";
 import { THEME } from "../theme";
-// Import centralized telemetry formatting utilities including compact volume
-import { formatMarketPrice, formatCompactVolume } from "../utils/formatters";
+// Import centralized telemetry formatting utilities including price change parser
+import { formatMarketPrice, formatCompactVolume, formatPriceChange } from "../utils/formatters";
 // Import centralized client storage abstraction layer
 import { storage } from "../utils/storage";
 
@@ -21,7 +21,7 @@ const lineCommand = (point, i, a) => {
 const PriceCard = () => {
   // Initialize state from local memory abstraction to lock preferences across sessions
   const [selectedSymbol, setSelectedSymbol] = useState(() =>
-    storage.get("selected_symbol", "BTC-USDT"),
+    storage.get("selected_symbol", "BTC-USDT")
   );
   const [data, setData] = useState(null);
   const [connected, setConnected] = useState(false);
@@ -165,13 +165,19 @@ const PriceCard = () => {
           </div>
         </div>
 
-        <div className="relative inline-block">
+        {/* Flex layout holding spot price alongside the color-coded 24H performance delta badge */}
+        <div className="flex items-baseline gap-3">
           <h2
             className="text-5xl font-black tabular-nums tracking-tighter italic"
             style={{ color: velocityColor }}
           >
             ${formatMarketPrice(data.price)}
           </h2>
+          <span
+            className={`text-[10px] font-mono font-black px-1.5 py-0.5 rounded-[4px] ${data.change >= 0 ? "bg-emerald-950/80 text-emerald-400 border border-emerald-800/50" : "bg-rose-950/80 text-rose-400 border border-rose-800/50"}`}
+          >
+            {formatPriceChange(data.change)}
+          </span>
         </div>
       </div>
 
