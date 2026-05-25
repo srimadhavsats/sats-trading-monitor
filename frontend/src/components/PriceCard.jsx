@@ -2,8 +2,12 @@ import React, { useState, useEffect } from "react";
 // Import centralized config and theme mappings
 import { CONFIG } from "../config";
 import { THEME } from "../theme";
-// Import centralized telemetry formatting utilities including price change parser
-import { formatMarketPrice, formatCompactVolume, formatPriceChange } from "../utils/formatters";
+// Import centralized telemetry formatting utilities
+import {
+  formatMarketPrice,
+  formatCompactVolume,
+  formatPriceChange,
+} from "../utils/formatters";
 // Import centralized client storage abstraction layer
 import { storage } from "../utils/storage";
 
@@ -21,7 +25,7 @@ const lineCommand = (point, i, a) => {
 const PriceCard = () => {
   // Initialize state from local memory abstraction to lock preferences across sessions
   const [selectedSymbol, setSelectedSymbol] = useState(() =>
-    storage.get("selected_symbol", "BTC-USDT")
+    storage.get("selected_symbol", "BTC-USDT"),
   );
   const [data, setData] = useState(null);
   const [connected, setConnected] = useState(false);
@@ -103,6 +107,9 @@ const PriceCard = () => {
   const handleSymbolChange = (sym) => {
     setSelectedSymbol(sym);
     storage.set("selected_symbol", sym);
+    // Reset session tracking boundaries when pivoting to an independent ticker asset channel
+    setSessionHigh(null);
+    setSessionLow(null);
   };
 
   if (!data) {
@@ -152,7 +159,7 @@ const PriceCard = () => {
         ))}
       </div>
 
-      <div className="relative z-30 mb-6">
+      <div className="relative z-30 mb-4">
         <div className="flex justify-between items-center mb-1">
           <h3 className="text-neutral-500 text-[9px] font-black uppercase tracking-[0.3em] pl-24">
             {data.symbol || selectedSymbol}
@@ -165,7 +172,6 @@ const PriceCard = () => {
           </div>
         </div>
 
-        {/* Flex layout holding spot price alongside the color-coded 24H performance delta badge */}
         <div className="flex items-baseline gap-3">
           <h2
             className="text-5xl font-black tabular-nums tracking-tighter italic"
@@ -178,6 +184,26 @@ const PriceCard = () => {
           >
             {formatPriceChange(data.change)}
           </span>
+        </div>
+
+        {/* Real-Time Session Extremes Inline Row Readout */}
+        <div className="flex gap-4 mt-2 pl-0.5">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[7px] font-black text-neutral-600 uppercase tracking-wider">
+              Session High
+            </span>
+            <span className="text-[10px] font-mono font-bold text-neutral-400">
+              ${sessionHigh ? formatMarketPrice(sessionHigh) : "--.--"}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[7px] font-black text-neutral-600 uppercase tracking-wider">
+              Session Low
+            </span>
+            <span className="text-[10px] font-mono font-bold text-neutral-400">
+              ${sessionLow ? formatMarketPrice(sessionLow) : "--.--"}
+            </span>
+          </div>
         </div>
       </div>
 
