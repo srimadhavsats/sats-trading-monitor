@@ -2,6 +2,9 @@ import asyncio
 
 import httpx
 
+# Import the computational analytics engine layer
+from analytics import MarketAnalytics
+
 # Import centralized configuration parameters
 from config import (
     ALLOWED_ORIGINS,
@@ -11,7 +14,7 @@ from config import (
     STREAM_HEARTBEAT_DELAY,
 )
 
-# Import the new decoupled websocket connection manager instance
+# Import the decentralized websocket connection manager instance
 from connection_manager import ConnectionManager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -60,7 +63,6 @@ async def health_check():
     """
     Service Health Check.
     Verifies container/host connectivity and gateway operational readiness.
-    Enforces runtime validation through HealthCheckResponse schema.
     """
     return {
         "status": "Sentinel v4.1 Active",
@@ -70,10 +72,7 @@ async def health_check():
 
 @app.on_event("startup")
 async def startup_event():
-    """
-    Initialization Hook.
-    Triggers diagnostic logging upon application server spin-up.
-    """
+    """Triggers diagnostic logging upon application server spin-up."""
     SentinelLogger.startup("Streaming Oracle Online")
 
 
@@ -86,9 +85,8 @@ async def startup_event():
 async def websocket_endpoint(websocket: WebSocket, symbol: str):
     """
     Asynchronous WebSocket stream handler. Handshakes connections using ConnectionManager
-    and broadcasts validated JSON telemetry objects to subscribers down-stream.
+    and evaluates metrics using the MarketAnalytics computational engine.
     """
-    # Register connection state to the centralized manager
     await manager.connect(websocket, symbol)
 
     # Normalize incoming pairs (e.g., BTC-USDT -> BTCUSDT) to comply with API schemas
@@ -119,19 +117,28 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str):
 
                     if result:
                         price = float(result.get("lastPrice", 0))
+                        high_24h = float(result.get("highPrice24h", 0))
+                        low_24h = float(result.get("lowPrice24h", 0))
+                        volume_24h = float(result.get("turnover24h", 0))
+
                         clean_key = symbol.replace("-", "/")
                         threshold = WHALE_THRESHOLDS.get(clean_key, 0)
+
+                        # Compute real-time whale status using the math processing utility
+                        is_whale_detected = MarketAnalytics.evaluate_whale_activity(
+                            volume_24h, threshold
+                        )
 
                         # Structured raw payload configuration
                         payload = {
                             "symbol": clean_key,
                             "price": price,
-                            "high": float(result.get("highPrice24h", 0)),
-                            "low": float(result.get("lowPrice24h", 0)),
-                            "volume": float(result.get("turnover24h", 0)),
+                            "high": high_24h,
+                            "low": low_24h,
+                            "volume": volume_24h,
                             "change": float(result.get("price24hPcnt", 0)) * 100,
-                            "is_whale": price > threshold,
-                            "whale_alert": price > threshold,
+                            "is_whale": is_whale_detected,
+                            "whale_alert": is_whale_detected,
                             "whale_threshold": threshold,
                         }
 
@@ -152,7 +159,6 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str):
                 await asyncio.sleep(STREAM_HEARTBEAT_DELAY)
 
     except WebSocketDisconnect:
-        # Clean up registration states from global memory map upon termination
         manager.disconnect(websocket, symbol)
     except Exception as e:
         SentinelLogger.error(f"Internal Pipeline Telemetry Exception: {e}")
