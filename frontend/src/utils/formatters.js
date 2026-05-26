@@ -59,3 +59,13 @@ export const formatCompactVolume = (volume) => {
     currency: "USD",
   }).format(volume);
 };
+
+/**
+ * Formats raw mathematical volatility calculations into a precise percentage string.
+ * @param {number} spread - The raw calculated spread percentage.
+ * @returns {string} Clean formatted percentage string.
+ */
+export const formatSpread = (spread) => {
+  if (spread === undefined || spread === null) return "0.00%";
+  return `${spread.toFixed(2)}%`;
+};
