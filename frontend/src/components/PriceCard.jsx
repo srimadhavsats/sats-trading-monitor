@@ -2,11 +2,12 @@ import React, { useState, useEffect } from "react";
 // Import centralized config and theme mappings
 import { CONFIG } from "../config";
 import { THEME } from "../theme";
-// Import centralized telemetry formatting utilities
+// Import centralized telemetry formatting utilities including the new formatSpread helper
 import {
   formatMarketPrice,
   formatCompactVolume,
   formatPriceChange,
+  formatSpread,
 } from "../utils/formatters";
 // Import centralized client storage abstraction layer
 import { storage } from "../utils/storage";
@@ -186,22 +187,30 @@ const PriceCard = () => {
           </span>
         </div>
 
-        {/* Real-Time Session Extremes Inline Row Readout */}
-        <div className="flex gap-4 mt-2 pl-0.5">
-          <div className="flex items-center gap-1.5">
+        {/* Real-Time Session Extremes & Live Volatility Spread Index Row */}
+        <div className="flex gap-3 mt-2 pl-0.5 items-center">
+          <div className="flex items-center gap-1">
             <span className="text-[7px] font-black text-neutral-600 uppercase tracking-wider">
-              Session High
+              High
             </span>
             <span className="text-[10px] font-mono font-bold text-neutral-400">
               ${sessionHigh ? formatMarketPrice(sessionHigh) : "--.--"}
             </span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <span className="text-[7px] font-black text-neutral-600 uppercase tracking-wider">
-              Session Low
+              Low
             </span>
             <span className="text-[10px] font-mono font-bold text-neutral-400">
               ${sessionLow ? formatMarketPrice(sessionLow) : "--.--"}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 border-l border-neutral-800/80 pl-2.5">
+            <span className="text-[7px] font-black text-neutral-600 uppercase tracking-wider">
+              24H Spread
+            </span>
+            <span className="text-[10px] font-mono font-bold text-neutral-300">
+              {formatSpread(data.spread)}
             </span>
           </div>
         </div>
