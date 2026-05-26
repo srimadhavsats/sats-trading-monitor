@@ -84,8 +84,8 @@ async def startup_event():
 @app.websocket("/ws/price/{symbol}")
 async def websocket_endpoint(websocket: WebSocket, symbol: str):
     """
-    Asynchronous WebSocket stream handler. Handshakes connections using ConnectionManager
-    and evaluates metrics using the MarketAnalytics computational engine.
+    Asynchronous WebSocket stream handler. Handshakes connections using ConnectionManager,
+    evaluates whale tracking rules, and computes live intraday volatility indexes.
     """
     await manager.connect(websocket, symbol)
 
@@ -124,12 +124,17 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str):
                         clean_key = symbol.replace("-", "/")
                         threshold = WHALE_THRESHOLDS.get(clean_key, 0)
 
-                        # Compute real-time whale status using the math processing utility
+                        # Compute real-time whale status using analytics engine
                         is_whale_detected = MarketAnalytics.evaluate_whale_activity(
                             volume_24h, threshold
                         )
 
-                        # Structured raw payload configuration
+                        # Calculate dynamic intraday percentage price volatility spread index
+                        spread_index = MarketAnalytics.calculate_volatility_spread(
+                            high_24h, low_24h
+                        )
+
+                        # Structured raw payload configuration with the dynamic spread variable
                         payload = {
                             "symbol": clean_key,
                             "price": price,
@@ -137,6 +142,7 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str):
                             "low": low_24h,
                             "volume": volume_24h,
                             "change": float(result.get("price24hPcnt", 0)) * 100,
+                            "spread": spread_index,
                             "is_whale": is_whale_detected,
                             "whale_alert": is_whale_detected,
                             "whale_threshold": threshold,
