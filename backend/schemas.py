@@ -55,6 +55,10 @@ class MarketStreamPayload(BaseModel):
     change: float = Field(
         ..., description="The calculated 24-hour price delta percentage change"
     )
+    spread: float = Field(
+        ...,
+        description="The calculated 24-hour intraday price volatility spread percentage",
+    )
     is_whale: bool = Field(..., description="Whale detection boolean flag state")
     whale_alert: bool = Field(
         ..., description="System broadcast flag for exceptional order visibility"
@@ -72,6 +76,7 @@ class MarketStreamPayload(BaseModel):
                 "low": 67400.25,
                 "volume": 125040032.12,
                 "change": 1.25,
+                "spread": 2.52,
                 "is_whale": False,
                 "whale_alert": False,
                 "whale_threshold": 500000.0,
