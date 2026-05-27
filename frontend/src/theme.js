@@ -1,24 +1,25 @@
 /**
- * SATS Sentinel v4.1 - Visual Theme & Design Tokens
- * Centralized interface color mapping for asset velocity and data streams.
+ * SATS Sentinel v4.1 - System Design Tokens
+ * Centralized theme configuration for consistent application aesthetics.
  */
 
 export const THEME = {
-  // Market movement telemetry indicators
+  // Color mappings dictated by real-time asset trajectory velocities
   velocity: {
-    bullish: "#10b981", // Emerald tracking green
-    bearish: "#fb923c", // Dynamic safety orange
+    bullish: "#10b981", // Emerald design token for upward price movement
+    bearish: "#f43f5e", // Rose design token for downward price movement
+    neutral: "#a3a3a3", // Neutral grey token for flat or unchanged asset states
   },
 
-  // Graphical chart path opacities
-  chart: {
-    fillOpacity: "0.1",
-    strokeWidth: "2",
-  },
-
-  // Core status system responses
+  // Connection integrity color codes
   status: {
-    online: "bg-emerald-500/10 text-emerald-400",
-    offline: "bg-red-500/10 text-red-400",
+    online: "bg-emerald-950/80 text-emerald-400 border border-emerald-800/50",
+    offline: "bg-neutral-950/80 text-neutral-400 border border-neutral-800/50",
+  },
+
+  // Graphical vector path constraints
+  chart: {
+    strokeWidth: 1.5,
+    fillOpacity: 0.08,
   },
 };
