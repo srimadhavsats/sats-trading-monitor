@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 
 import httpx
 
@@ -25,6 +26,22 @@ from logger import SentinelLogger
 # Import formalized data validation schemas
 from schemas import HealthCheckResponse, MarketStreamPayload
 
+
+# --------------------------------------------------------------------
+# Application Lifecycle Context Manager (Lifespan)
+# --------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Handles application startup and shutdown subroutines uniformly.
+    Replaces deprecated event hooks for stable resource management.
+    """
+    # Startup phase execution
+    SentinelLogger.startup("Streaming Oracle Online")
+    yield
+    # Shutdown phase execution can be appended here when required
+
+
 # --------------------------------------------------------------------
 # Configuration & State Instantiations
 # --------------------------------------------------------------------
@@ -38,6 +55,7 @@ app = FastAPI(
     title="SATS Sentinel Engine",
     description="High-frequency market data streaming oracle via WebSockets",
     version="4.1",
+    lifespan=lifespan,
 )
 
 # Instantiate the global connection coordinator
@@ -54,7 +72,7 @@ app.add_middleware(
 
 
 # --------------------------------------------------------------------
-# Application Lifecycle Routes
+# Application API Routes
 # --------------------------------------------------------------------
 
 
@@ -68,12 +86,6 @@ async def health_check():
         "status": "Sentinel v4.1 Active",
         "message": "Oracle engine is operational and ready for stream requests",
     }
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Triggers diagnostic logging upon application server spin-up."""
-    SentinelLogger.startup("Streaming Oracle Online")
 
 
 # --------------------------------------------------------------------
