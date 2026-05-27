@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 // Import centralized config and theme mappings
 import { CONFIG } from "../config";
 import { THEME } from "../theme";
-// Import centralized telemetry formatting utilities including the new formatSpread helper
+// Import centralized telemetry formatting utilities
 import {
   formatMarketPrice,
   formatCompactVolume,
@@ -148,8 +148,9 @@ const PriceCard = () => {
 
   return (
     <div className="p-6 border rounded-2xl bg-neutral-900/95 backdrop-blur-2xl w-96 relative border-neutral-800">
+      {/* Target selector array generated dynamically from central configuration parameters */}
       <div className="absolute left-6 top-6 flex gap-2 z-50">
-        {["BTC-USDT", "ETH-USDT"].map((sym) => (
+        {CONFIG.TRACKED_SYMBOLS.map((sym) => (
           <button
             key={sym}
             onClick={() => handleSymbolChange(sym)}
@@ -187,7 +188,6 @@ const PriceCard = () => {
           </span>
         </div>
 
-        {/* Real-Time Session Extremes & Live Volatility Spread Index Row */}
         <div className="flex gap-3 mt-2 pl-0.5 items-center">
           <div className="flex items-center gap-1">
             <span className="text-[7px] font-black text-neutral-600 uppercase tracking-wider">
