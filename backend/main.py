@@ -35,8 +35,11 @@ async def lifespan(app: FastAPI):
     """
     Handles application startup and shutdown subroutines uniformly.
     """
+    # Startup phase execution subroutines
     SentinelLogger.startup("Streaming Oracle Online")
     yield
+    # Shutdown phase execution logic block
+    SentinelLogger.info("Streaming Oracle Offline")
 
 
 # --------------------------------------------------------------------
@@ -160,7 +163,6 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str):
                         )
 
                 except httpx.HTTPError as http_err:
-                    # Isolated handling block for remote network transport vulnerabilities
                     SentinelLogger.error(
                         f"Network transport anomaly encountered during poll: {http_err}"
                     )
