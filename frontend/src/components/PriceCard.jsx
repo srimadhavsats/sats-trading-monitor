@@ -132,12 +132,15 @@ const PriceCard = () => {
   const chartMin = minPrice - priceRange * 0.2;
   const prevPrice =
     history.length > 1 ? history[history.length - 2] : data.price;
-  const isDropping = data.price < prevPrice;
 
-  // Consuming design tokens instead of raw string definitions
-  const velocityColor = isDropping
-    ? THEME.velocity.bearish
-    : THEME.velocity.bullish;
+  // Three-state asset price vector tracking assignment
+  const isClimbing = data.price > prevPrice;
+  const isDropping = data.price < prevPrice;
+  const velocityColor = isClimbing
+    ? THEME.velocity.bullish
+    : isDropping
+      ? THEME.velocity.bearish
+      : THEME.velocity.neutral;
 
   const getPlotY = (price) => 128 - ((price - chartMin) / priceRange) * 128;
   const points = currentHistory.map((p, i) => [
@@ -148,7 +151,6 @@ const PriceCard = () => {
 
   return (
     <div className="p-6 border rounded-2xl bg-neutral-900/95 backdrop-blur-2xl w-96 relative border-neutral-800">
-      {/* Target selector array generated dynamically from central configuration parameters */}
       <div className="absolute left-6 top-6 flex gap-2 z-50">
         {CONFIG.TRACKED_SYMBOLS.map((sym) => (
           <button
@@ -182,7 +184,7 @@ const PriceCard = () => {
             ${formatMarketPrice(data.price)}
           </h2>
           <span
-            className={`text-[10px] font-mono font-black px-1.5 py-0.5 rounded-[4px] ${data.change >= 0 ? "bg-emerald-950/80 text-emerald-400 border border-emerald-800/50" : "bg-rose-950/80 text-rose-400 border border-rose-800/50"}`}
+            className={`text-[10px] font-mono font-black px-1.5 py-0.5 rounded-[4px] ${data.change > 0 ? "bg-emerald-950/80 text-emerald-400 border border-emerald-800/50" : data.change < 0 ? "bg-rose-950/80 text-rose-400 border border-rose-800/50" : "bg-neutral-950/80 text-neutral-400 border border-neutral-800/50"}`}
           >
             {formatPriceChange(data.change)}
           </span>
