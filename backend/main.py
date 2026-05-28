@@ -34,12 +34,9 @@ from schemas import HealthCheckResponse, MarketStreamPayload
 async def lifespan(app: FastAPI):
     """
     Handles application startup and shutdown subroutines uniformly.
-    Replaces deprecated event hooks for stable resource management.
     """
-    # Startup phase execution
     SentinelLogger.startup("Streaming Oracle Online")
     yield
-    # Shutdown phase execution can be appended here when required
 
 
 # --------------------------------------------------------------------
@@ -48,7 +45,6 @@ async def lifespan(app: FastAPI):
 try:
     from ui_layout import WHALE_THRESHOLDS
 except ImportError:
-    # Fallback thresholds optimized via central configuration module
     WHALE_THRESHOLDS = DEFAULT_WHALE_THRESHOLDS
 
 app = FastAPI(
@@ -58,10 +54,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Instantiate the global connection coordinator
 manager = ConnectionManager()
 
-# Cross-Origin Resource Sharing (CORS) security configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -101,12 +95,10 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str):
     """
     await manager.connect(websocket, symbol)
 
-    # Normalize incoming pairs (e.g., BTC-USDT -> BTCUSDT) to comply with API schemas
     api_symbol = symbol.replace("-", "")
     if "SATS" in api_symbol and "1000" not in api_symbol:
         api_symbol = f"1000{api_symbol}"
 
-    # Anti-fingerprinting browser-mimicking signatures to prevent regional edge timeouts
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Accept": "application/json",
@@ -119,59 +111,58 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str):
             timeout=CONNECTION_TIMEOUT_SECONDS, headers=headers, trust_env=True
         ) as client:
             while True:
-                response = await client.get(
-                    BYBIT_API_URL, params={"category": "spot", "symbol": api_symbol}
-                )
+                try:
+                    response = await client.get(
+                        BYBIT_API_URL, params={"category": "spot", "symbol": api_symbol}
+                    )
 
-                if response.status_code == 200:
-                    data = response.json()
-                    result = data.get("result", {}).get("list", [{}])[0]
+                    if response.status_code == 200:
+                        data = response.json()
+                        result = data.get("result", {}).get("list", [{}])[0]
 
-                    if result:
-                        price = float(result.get("lastPrice", 0))
-                        high_24h = float(result.get("highPrice24h", 0))
-                        low_24h = float(result.get("lowPrice24h", 0))
-                        volume_24h = float(result.get("turnover24h", 0))
+                        if result:
+                            price = float(result.get("lastPrice", 0))
+                            high_24h = float(result.get("highPrice24h", 0))
+                            low_24h = float(result.get("lowPrice24h", 0))
+                            volume_24h = float(result.get("turnover24h", 0))
 
-                        clean_key = symbol.replace("-", "/")
-                        threshold = WHALE_THRESHOLDS.get(clean_key, 0)
+                            clean_key = symbol.replace("-", "/")
+                            threshold = WHALE_THRESHOLDS.get(clean_key, 0)
 
-                        # Compute real-time whale status using analytics engine
-                        is_whale_detected = MarketAnalytics.evaluate_whale_activity(
-                            volume_24h, threshold
+                            is_whale_detected = MarketAnalytics.evaluate_whale_activity(
+                                volume_24h, threshold
+                            )
+                            spread_index = MarketAnalytics.calculate_volatility_spread(
+                                high_24h, low_24h
+                            )
+
+                            payload = {
+                                "symbol": clean_key,
+                                "price": price,
+                                "high": high_24h,
+                                "low": low_24h,
+                                "volume": volume_24h,
+                                "change": float(result.get("price24hPcnt", 0)) * 100,
+                                "spread": spread_index,
+                                "is_whale": is_whale_detected,
+                                "whale_alert": is_whale_detected,
+                                "whale_threshold": threshold,
+                            }
+
+                            validated_payload = MarketStreamPayload(**payload)
+                            await manager.broadcast_to_symbol(
+                                symbol, validated_payload.model_dump()
+                            )
+                            SentinelLogger.broadcast(clean_key, price)
+                    else:
+                        SentinelLogger.error(
+                            f"Oracle Edge API Connection Warning: Status {response.status_code}"
                         )
 
-                        # Calculate dynamic intraday percentage price volatility spread index
-                        spread_index = MarketAnalytics.calculate_volatility_spread(
-                            high_24h, low_24h
-                        )
-
-                        # Structured raw payload configuration with the dynamic spread variable
-                        payload = {
-                            "symbol": clean_key,
-                            "price": price,
-                            "high": high_24h,
-                            "low": low_24h,
-                            "volume": volume_24h,
-                            "change": float(result.get("price24hPcnt", 0)) * 100,
-                            "spread": spread_index,
-                            "is_whale": is_whale_detected,
-                            "whale_alert": is_whale_detected,
-                            "whale_threshold": threshold,
-                        }
-
-                        # Parse and enforce data validation schemas
-                        validated_payload = MarketStreamPayload(**payload)
-
-                        # Broadcast payload data out across all connection points tracking this symbol
-                        await manager.broadcast_to_symbol(
-                            symbol, validated_payload.model_dump()
-                        )
-                        SentinelLogger.broadcast(clean_key, price)
-
-                else:
+                except httpx.HTTPError as http_err:
+                    # Isolated handling block for remote network transport vulnerabilities
                     SentinelLogger.error(
-                        f"Oracle Edge API Connection Warning: Status {response.status_code}"
+                        f"Network transport anomaly encountered during poll: {http_err}"
                     )
 
                 await asyncio.sleep(STREAM_HEARTBEAT_DELAY)
