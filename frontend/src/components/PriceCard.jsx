@@ -2,12 +2,13 @@ import React, { useState, useEffect } from "react";
 // Import centralized config and theme mappings
 import { CONFIG } from "../config";
 import { THEME } from "../theme";
-// Import centralized telemetry formatting utilities
+// Import centralized telemetry formatting utilities including the time formatter
 import {
   formatMarketPrice,
   formatCompactVolume,
   formatPriceChange,
   formatSpread,
+  formatTimestamp,
 } from "../utils/formatters";
 // Import centralized client storage abstraction layer
 import { storage } from "../utils/storage";
@@ -33,6 +34,8 @@ const PriceCard = () => {
   const [history, setHistory] = useState([]);
   const [sessionHigh, setSessionHigh] = useState(null);
   const [sessionLow, setSessionLow] = useState(null);
+  // State tracking block capturing the strict instance metadata for incoming packets
+  const [lastUpdated, setLastUpdated] = useState(null);
 
   // Consume boundary limits from central config
   const maxTicks = CONFIG.MAX_CHART_TICKS;
@@ -74,6 +77,8 @@ const PriceCard = () => {
 
           setData(incomingData);
           setHistory((prev) => [...prev, currentPrice].slice(-maxTicks));
+          // Register the system date object tracking packet arrival
+          setLastUpdated(new Date());
         } catch (err) {
           console.error("❌ Oracle Data Error:", err);
         }
@@ -111,6 +116,7 @@ const PriceCard = () => {
     // Reset session tracking boundaries when pivoting to an independent ticker asset channel
     setSessionHigh(null);
     setSessionLow(null);
+    setLastUpdated(null);
   };
 
   if (!data) {
@@ -247,6 +253,11 @@ const PriceCard = () => {
           </p>
           <p className="text-[11px] font-mono font-black text-neutral-300">
             Singapore / Bybit
+          </p>
+          <p className="text-[9px] font-mono text-neutral-500">
+            {lastUpdated
+              ? `Latency Log: ${formatTimestamp(lastUpdated)}`
+              : "Awaiting transmission..."}
           </p>
         </div>
 
