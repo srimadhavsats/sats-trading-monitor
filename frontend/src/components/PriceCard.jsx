@@ -2,13 +2,12 @@ import React, { useState, useEffect } from "react";
 // Import centralized config and theme mappings
 import { CONFIG } from "../config";
 import { THEME } from "../theme";
-// Import centralized telemetry formatting utilities including the time formatter
+// Import centralized telemetry formatting utilities
 import {
   formatMarketPrice,
   formatCompactVolume,
   formatPriceChange,
   formatSpread,
-  formatTimestamp,
 } from "../utils/formatters";
 // Import centralized client storage abstraction layer
 import { storage } from "../utils/storage";
@@ -34,7 +33,6 @@ const PriceCard = () => {
   const [history, setHistory] = useState([]);
   const [sessionHigh, setSessionHigh] = useState(null);
   const [sessionLow, setSessionLow] = useState(null);
-  // State tracking block capturing the strict instance metadata for incoming packets
   const [lastUpdated, setLastUpdated] = useState(null);
 
   // Consume boundary limits from central config
@@ -48,9 +46,7 @@ const PriceCard = () => {
     const connect = () => {
       if (!isMounted) return;
 
-      // Dynamically resolve WebSocket connection string from config
       const wsUrl = `${CONFIG.BACKEND_WS_URL}/ws/price/${selectedSymbol}`;
-
       socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {
@@ -77,7 +73,6 @@ const PriceCard = () => {
 
           setData(incomingData);
           setHistory((prev) => [...prev, currentPrice].slice(-maxTicks));
-          // Register the system date object tracking packet arrival
           setLastUpdated(new Date());
         } catch (err) {
           console.error("❌ Oracle Data Error:", err);
@@ -87,7 +82,6 @@ const PriceCard = () => {
       socket.onclose = () => {
         if (isMounted) {
           setConnected(false);
-          // Heartbeat retry fallback interval managed via centralized constants
           reconnectTimer = setTimeout(connect, CONFIG.HEARTBEAT_RECONNECT_MS);
         }
       };
@@ -109,11 +103,9 @@ const PriceCard = () => {
     };
   }, [selectedSymbol]);
 
-  // Intercept selection events to persist choices before component re-mount loops
   const handleSymbolChange = (sym) => {
     setSelectedSymbol(sym);
     storage.set("selected_symbol", sym);
-    // Reset session tracking boundaries when pivoting to an independent ticker asset channel
     setSessionHigh(null);
     setSessionLow(null);
     setLastUpdated(null);
@@ -129,7 +121,6 @@ const PriceCard = () => {
     );
   }
 
-  // Charting Logic & Velocity Theme Assignment
   const currentHistory =
     history.length > 0 ? history : [data.price, data.price];
   const minPrice = Math.min(...currentHistory);
@@ -139,7 +130,6 @@ const PriceCard = () => {
   const prevPrice =
     history.length > 1 ? history[history.length - 2] : data.price;
 
-  // Three-state asset price vector tracking assignment
   const isClimbing = data.price > prevPrice;
   const isDropping = data.price < prevPrice;
   const velocityColor = isClimbing
@@ -222,6 +212,18 @@ const PriceCard = () => {
             </span>
           </div>
         </div>
+
+        {/* Conditional container executing structural alert notification logic for exceptional order blocks */}
+        {data.is_whale && (
+          <div className="mt-3 px-2 py-1 bg-neutral-950 border border-neutral-800 rounded flex justify-between items-center animate-pulse">
+            <span className="text-[7px] font-black tracking-widest text-neutral-400 uppercase">
+              Alert: Volume Threshold Breach
+            </span>
+            <span className="text-[8px] font-mono font-bold text-neutral-500">
+              Target Reached
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="relative h-32 w-full bg-black/60 rounded-xl border border-neutral-800/40 overflow-hidden mb-5">
@@ -253,11 +255,6 @@ const PriceCard = () => {
           </p>
           <p className="text-[11px] font-mono font-black text-neutral-300">
             Singapore / Bybit
-          </p>
-          <p className="text-[9px] font-mono text-neutral-500">
-            {lastUpdated
-              ? `Latency Log: ${formatTimestamp(lastUpdated)}`
-              : "Awaiting transmission..."}
           </p>
         </div>
 
