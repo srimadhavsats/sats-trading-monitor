@@ -44,3 +44,12 @@ class ConnectionManager:
                 except Exception:
                     # Stale connection safety handler to prevent broadcasting interruptions
                     pass
+
+    def get_active_count(self, symbol: str) -> int:
+        """
+        Calculates the exact sequence length of open network sockets linked to an asset channel.
+        Provides metric visibility for operational oversight logs.
+        """
+        if symbol in self.active_connections:
+            return len(self.active_connections[symbol])
+        return 0
