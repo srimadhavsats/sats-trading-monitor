@@ -85,6 +85,16 @@ async def health_check():
     }
 
 
+@app.get("/metrics/{symbol}")
+async def get_stream_metrics(symbol: str):
+    """
+    Exposes real-time client channel allocation metrics for a designated symbol channel.
+    Provides a structural inspection endpoint for diagnostic tracking.
+    """
+    count = manager.get_active_count(symbol)
+    return {"symbol": symbol, "active_connections": count}
+
+
 # --------------------------------------------------------------------
 # WebSocket Streaming Pipeline
 # --------------------------------------------------------------------
