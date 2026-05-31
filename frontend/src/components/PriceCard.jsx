@@ -33,7 +33,6 @@ const PriceCard = () => {
   const [history, setHistory] = useState([]);
   const [sessionHigh, setSessionHigh] = useState(null);
   const [sessionLow, setSessionLow] = useState(null);
-  const [lastUpdated, setLastUpdated] = useState(null);
 
   // Consume boundary limits from central config
   const maxTicks = CONFIG.MAX_CHART_TICKS;
@@ -73,7 +72,6 @@ const PriceCard = () => {
 
           setData(incomingData);
           setHistory((prev) => [...prev, currentPrice].slice(-maxTicks));
-          setLastUpdated(new Date());
         } catch (err) {
           console.error("❌ Oracle Data Error:", err);
         }
@@ -108,7 +106,6 @@ const PriceCard = () => {
     storage.set("selected_symbol", sym);
     setSessionHigh(null);
     setSessionLow(null);
-    setLastUpdated(null);
   };
 
   if (!data) {
@@ -213,7 +210,6 @@ const PriceCard = () => {
           </div>
         </div>
 
-        {/* Conditional container executing structural alert notification logic for exceptional order blocks */}
         {data.is_whale && (
           <div className="mt-3 px-2 py-1 bg-neutral-950 border border-neutral-800 rounded flex justify-between items-center animate-pulse">
             <span className="text-[7px] font-black tracking-widest text-neutral-400 uppercase">
@@ -227,11 +223,48 @@ const PriceCard = () => {
       </div>
 
       <div className="relative h-32 w-full bg-black/60 rounded-xl border border-neutral-800/40 overflow-hidden mb-5">
+        {/* Absolute-positioned textual reference boundary bounds for the visible index timeline */}
+        <div className="absolute right-2.5 top-2 text-[7px] font-mono font-black text-neutral-700 select-none z-40 pointer-events-none uppercase tracking-wider">
+          Ceiling: ${formatMarketPrice(maxPrice)}
+        </div>
+        <div className="absolute right-2.5 bottom-2 text-[7px] font-mono font-black text-neutral-700 select-none z-40 pointer-events-none uppercase tracking-wider">
+          Floor: ${formatMarketPrice(minPrice)}
+        </div>
+
         <svg
           className="absolute inset-0 w-full h-full"
           viewBox="0 0 384 128"
           preserveAspectRatio="none"
         >
+          {/* Horizontal grid layout vector guides mapping baseline boundaries */}
+          <line
+            x1="0"
+            y1="32"
+            x2="384"
+            y2="32"
+            stroke="#171717"
+            strokeWidth="1"
+            strokeDasharray="3 3"
+          />
+          <line
+            x1="0"
+            y1="64"
+            x2="384"
+            y2="64"
+            stroke="#171717"
+            strokeWidth="1"
+            strokeDasharray="3 3"
+          />
+          <line
+            x1="0"
+            y1="96"
+            x2="384"
+            y2="96"
+            stroke="#171717"
+            strokeWidth="1"
+            strokeDasharray="3 3"
+          />
+
           <path
             d={`${dAttr} L 384,128 L 0,128 Z`}
             fill={velocityColor}
