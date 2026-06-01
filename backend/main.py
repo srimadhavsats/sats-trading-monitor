@@ -35,11 +35,11 @@ async def lifespan(app: FastAPI):
     """
     Handles application startup and shutdown subroutines uniformly.
     """
-    # Startup phase execution subroutines
-    SentinelLogger.startup("Streaming Oracle Online")
+    # Startup phase execution subroutines using institutional nomenclature
+    SentinelLogger.startup("Resilient Telemetry Pipeline Initialized")
     yield
     # Shutdown phase execution logic block
-    SentinelLogger.info("Streaming Oracle Offline")
+    SentinelLogger.info("Resilient Telemetry Pipeline Terminated")
 
 
 # --------------------------------------------------------------------
@@ -50,9 +50,10 @@ try:
 except ImportError:
     WHALE_THRESHOLDS = DEFAULT_WHALE_THRESHOLDS
 
+# Refactored metadata definitions aligning with institutional naming conventions
 app = FastAPI(
-    title="SATS Sentinel Engine",
-    description="High-frequency market data streaming oracle via WebSockets",
+    title="SATS High-Frequency Telemetry Pipeline",
+    description="Resilient real-time market data streaming pipeline utilizing stateful full-duplex WebSocket channels",
     version="4.1",
     lifespan=lifespan,
 )
@@ -80,8 +81,8 @@ async def health_check():
     Verifies container/host connectivity and gateway operational readiness.
     """
     return {
-        "status": "Sentinel v4.1 Active",
-        "message": "Oracle engine is operational and ready for stream requests",
+        "status": "Telemetry Pipeline Active",
+        "message": "Data ingestion pipeline is operational and accepting stream connection requests",
     }
 
 
