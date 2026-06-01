@@ -11,8 +11,11 @@ DEFAULT_WHALE_THRESHOLDS = {
     "ETH/USDT": 250000.0,
 }
 
-# Cross-Origin Resource Sharing (CORS) security definitions
+# Cross-Origin Resource Sharing (CORS) and WebSocket safety validation matrices
+# Expanded to accommodate standard local environment port deviations natively
 ALLOWED_ORIGINS = [
     os.getenv("ALLOWED_ORIGIN_PRIMARY", "http://localhost:5173"),
     os.getenv("ALLOWED_ORIGIN_SECONDARY", "http://127.0.0.1:5173"),
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
 ]
