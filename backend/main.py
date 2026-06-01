@@ -1,4 +1,5 @@
 import asyncio
+import re
 from contextlib import asynccontextmanager
 
 import httpx
@@ -17,7 +18,7 @@ from config import (
 
 # Import the decentralized websocket connection manager instance
 from connection_manager import ConnectionManager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import the centralized telemetry engine logger
@@ -87,7 +88,17 @@ async def health_check():
 async def get_stream_metrics(symbol: str):
     """
     Exposes real-time client channel allocation metrics for a designated symbol channel.
+    Executes strict validation processing on input route string arguments.
     """
+    # Defensive Control: Enforce strict input verification to prevent parameter manipulation
+    if not re.match(r"^[A-Za-z0-9\-]+$", symbol):
+        SentinelLogger.error(
+            f"Malformed or non-whitelisted metrics parameter rejected: {symbol}"
+        )
+        raise HTTPException(
+            status_code=400, detail="Malformed character format inside parameter field"
+        )
+
     count = manager.get_active_count(symbol)
     return {"symbol": symbol, "active_connections": count}
 
@@ -101,8 +112,8 @@ async def get_stream_metrics(symbol: str):
 async def websocket_endpoint(websocket: WebSocket, symbol: str):
     """
     Asynchronous WebSocket stream handler. Performs strict cross-origin verification,
-    handshakes connections using ConnectionManager, evaluates whale tracking rules,
-    and computes live intraday volatility indexes.
+    enforces path parameter input sanitization, handshakes connections using ConnectionManager,
+    evaluates whale tracking rules, and computes live intraday volatility indexes.
     """
     # Defensive Control: Enforce cross-origin validation check to defend against CSWSH vectors
     request_origin = websocket.headers.get("origin")
@@ -110,7 +121,14 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str):
         SentinelLogger.error(
             f"Unauthorized WebSocket handshake rejected from origin vector: {request_origin}"
         )
-        # Close connection using code 1008 (Policy Violation) to avoid state allocations
+        await websocket.close(code=1008)
+        return
+
+    # Defensive Control: Enforce path token verification filtering out unauthorized character vectors
+    if not re.match(r"^[A-Za-z0-9\-]+$", symbol):
+        SentinelLogger.error(
+            f"Malformed or non-whitelisted WebSocket stream parameter rejected: {symbol}"
+        )
         await websocket.close(code=1008)
         return
 
