@@ -35,10 +35,8 @@ async def lifespan(app: FastAPI):
     """
     Handles application startup and shutdown subroutines uniformly.
     """
-    # Startup phase execution subroutines using institutional nomenclature
     SentinelLogger.startup("Resilient Telemetry Pipeline Initialized")
     yield
-    # Shutdown phase execution logic block
     SentinelLogger.info("Resilient Telemetry Pipeline Terminated")
 
 
@@ -50,7 +48,6 @@ try:
 except ImportError:
     WHALE_THRESHOLDS = DEFAULT_WHALE_THRESHOLDS
 
-# Refactored metadata definitions aligning with institutional naming conventions
 app = FastAPI(
     title="SATS High-Frequency Telemetry Pipeline",
     description="Resilient real-time market data streaming pipeline utilizing stateful full-duplex WebSocket channels",
@@ -90,7 +87,6 @@ async def health_check():
 async def get_stream_metrics(symbol: str):
     """
     Exposes real-time client channel allocation metrics for a designated symbol channel.
-    Provides a structural inspection endpoint for diagnostic tracking.
     """
     count = manager.get_active_count(symbol)
     return {"symbol": symbol, "active_connections": count}
@@ -104,9 +100,20 @@ async def get_stream_metrics(symbol: str):
 @app.websocket("/ws/price/{symbol}")
 async def websocket_endpoint(websocket: WebSocket, symbol: str):
     """
-    Asynchronous WebSocket stream handler. Handshakes connections using ConnectionManager,
-    evaluates whale tracking rules, and computes live intraday volatility indexes.
+    Asynchronous WebSocket stream handler. Performs strict cross-origin verification,
+    handshakes connections using ConnectionManager, evaluates whale tracking rules,
+    and computes live intraday volatility indexes.
     """
+    # Defensive Control: Enforce cross-origin validation check to defend against CSWSH vectors
+    request_origin = websocket.headers.get("origin")
+    if request_origin not in ALLOWED_ORIGINS:
+        SentinelLogger.error(
+            f"Unauthorized WebSocket handshake rejected from origin vector: {request_origin}"
+        )
+        # Close connection using code 1008 (Policy Violation) to avoid state allocations
+        await websocket.close(code=1008)
+        return
+
     await manager.connect(websocket, symbol)
 
     api_symbol = symbol.replace("-", "")
