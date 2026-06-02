@@ -1,0 +1,39 @@
+# ====================================================================
+# SATS High-Frequency Telemetry Pipeline - Continuous Integration Suite
+# ====================================================================
+name: Continuous Integration
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  test-backend:
+    name: Execute Backend Verification Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13 runtime environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Install backend dependencies and testing utilities
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f backend/requirements.txt ]; then pip install -r backend/requirements.txt; fi
+          pip install pytest
+
+      - name: Run automated unit regression tests via pytest
+        run: |
+          cd backend
+          pytest
