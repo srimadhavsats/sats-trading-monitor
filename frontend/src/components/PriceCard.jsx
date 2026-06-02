@@ -24,7 +24,6 @@ const lineCommand = (point, i, a) => {
 };
 
 const PriceCard = () => {
-  // Initialize state from local memory abstraction to lock preferences across sessions
   const [selectedSymbol, setSelectedSymbol] = useState(() =>
     storage.get("selected_symbol", "BTC-USDT"),
   );
@@ -33,14 +32,16 @@ const PriceCard = () => {
   const [history, setHistory] = useState([]);
   const [sessionHigh, setSessionHigh] = useState(null);
   const [sessionLow, setSessionLow] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
-  // Consume boundary limits from central config
   const maxTicks = CONFIG.MAX_CHART_TICKS;
 
   useEffect(() => {
     let socket = null;
     let reconnectTimer = null;
     let isMounted = true;
+    // Stateful tracking counter for exponential fallback calculation
+    let connectionAttempts = 0;
 
     const connect = () => {
       if (!isMounted) return;
@@ -51,7 +52,9 @@ const PriceCard = () => {
       socket.onopen = () => {
         if (isMounted) {
           setConnected(true);
-          console.log(`✅ Sentinel Linked: ${selectedSymbol}`);
+          // Defensive Control: Reset retry counters back to initial states upon a verified network connection
+          connectionAttempts = 0;
+          console.log(`✅ Telemetry Link Established: ${selectedSymbol}`);
         }
       };
 
@@ -72,16 +75,29 @@ const PriceCard = () => {
 
           setData(incomingData);
           setHistory((prev) => [...prev, currentPrice].slice(-maxTicks));
+          setLastUpdated(new Date());
         } catch (err) {
           console.error("❌ Oracle Data Error:", err);
         }
       };
 
       socket.onclose = () => {
-        if (isMounted) {
-          setConnected(false);
-          reconnectTimer = setTimeout(connect, CONFIG.HEARTBEAT_RECONNECT_MS);
-        }
+        if (!isMounted) return;
+        setConnected(false);
+
+        // Defensive Control: Calculate an exponential backing delay period to safeguard resource consumption
+        const baselineDelay = CONFIG.HEARTBEAT_RECONNECT_MS || 3000;
+        const calculatedBackoff =
+          baselineDelay * Math.pow(2, connectionAttempts);
+        // Constrain backing limits to an absolute maximum ceiling parameters of 30000ms
+        const finalReconnectDelay = Math.min(30000, calculatedBackoff);
+
+        console.warn(
+          `📡 Network link dropped. Retrying gateway connection in ${finalReconnectDelay}ms (Attempt ${connectionAttempts + 1})`,
+        );
+
+        connectionAttempts++;
+        reconnectTimer = setTimeout(connect, finalReconnectDelay);
       };
 
       socket.onerror = () => {
@@ -106,13 +122,16 @@ const PriceCard = () => {
     storage.set("selected_symbol", sym);
     setSessionHigh(null);
     setSessionLow(null);
+    setLastUpdated(null);
   };
 
   if (!data) {
     return (
       <div className="p-6 border border-neutral-800 rounded-2xl bg-neutral-900/40 w-96 animate-pulse flex flex-col justify-center items-center h-80">
         <p className="text-neutral-500 font-mono text-[10px] uppercase tracking-widest text-center">
-          {connected ? "Receiving Data Feed..." : "Establishing Oracle Link..."}
+          {connected
+            ? "Receiving Data Feed..."
+            : "Establishing Telemetry Link..."}
         </p>
       </div>
     );
@@ -223,7 +242,6 @@ const PriceCard = () => {
       </div>
 
       <div className="relative h-32 w-full bg-black/60 rounded-xl border border-neutral-800/40 overflow-hidden mb-5">
-        {/* Absolute-positioned textual reference boundary bounds for the visible index timeline */}
         <div className="absolute right-2.5 top-2 text-[7px] font-mono font-black text-neutral-700 select-none z-40 pointer-events-none uppercase tracking-wider">
           Ceiling: ${formatMarketPrice(maxPrice)}
         </div>
@@ -236,7 +254,6 @@ const PriceCard = () => {
           viewBox="0 0 384 128"
           preserveAspectRatio="none"
         >
-          {/* Horizontal grid layout vector guides mapping baseline boundaries */}
           <line
             x1="0"
             y1="32"
@@ -284,7 +301,7 @@ const PriceCard = () => {
       <div className="flex justify-between items-end border-t border-neutral-800 pt-4">
         <div className="flex flex-col gap-1">
           <p className="text-neutral-600 text-[8px] font-black uppercase tracking-widest">
-            Oracle Stream
+            Data Pipeline
           </p>
           <p className="text-[11px] font-mono font-black text-neutral-300">
             Singapore / Bybit
