@@ -1,5 +1,5 @@
 # ====================================================================
-# SATS Sentinel v4.1 - WebSocket Connection Manager Engine
+# SATS High-Frequency Telemetry Pipeline - WebSocket Connection Manager
 # ====================================================================
 from typing import Dict, List
 
@@ -13,10 +13,24 @@ class ConnectionManager:
     def __init__(self):
         # Track active socket connections mapped by their target symbols
         self.active_connections: Dict[str, List[WebSocket]] = {}
+        # In-memory rolling historical message cache to enable immediate client state seating
+        self.history_cache: Dict[str, List[dict]] = {}
+        # Bound historical allocation alignment match for client viewport tick limits
+        self.max_cache_length = 30
 
     async def connect(self, websocket: WebSocket, symbol: str):
-        """Accepts a new client connection handshake and registers it to a target stream channel."""
+        """Accepts a new client connection handshake, replays cached historical data, and registers the socket."""
         await websocket.accept()
+
+        # Stateful Recovery: Replay rolling historical data to instantly seed client charting states
+        if symbol in self.history_cache:
+            for cached_payload in self.history_cache[symbol]:
+                try:
+                    await websocket.send_json(cached_payload)
+                except Exception:
+                    # Catch early transport closures cleanly
+                    pass
+
         if symbol not in self.active_connections:
             self.active_connections[symbol] = []
         self.active_connections[symbol].append(websocket)
@@ -36,7 +50,15 @@ class ConnectionManager:
                 del self.active_connections[symbol]
 
     async def broadcast_to_symbol(self, symbol: str, message: dict):
-        """Broadcasts a telemetry payload to all active subscribers tracking a target symbol."""
+        """Broadcasts a telemetry payload to subscribers and caches the transaction into state history."""
+        # Stateful Control: Append incoming transactional snapshot into historical array cache bounds
+        if symbol not in self.history_cache:
+            self.history_cache[symbol] = []
+        self.history_cache[symbol].append(message)
+        self.history_cache[symbol] = self.history_cache[symbol][
+            -self.max_cache_length :
+        ]
+
         if symbol in self.active_connections:
             for connection in self.active_connections[symbol]:
                 try:
@@ -46,10 +68,7 @@ class ConnectionManager:
                     pass
 
     def get_active_count(self, symbol: str) -> int:
-        """
-        Calculates the exact sequence length of open network sockets linked to an asset channel.
-        Provides metric visibility for operational oversight logs.
-        """
+        """Calculates the exact sequence length of open network sockets linked to an asset channel."""
         if symbol in self.active_connections:
             return len(self.active_connections[symbol])
         return 0
