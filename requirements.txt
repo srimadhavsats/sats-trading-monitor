@@ -1,15 +1,14 @@
-# --- SATS Sentinel v4.1 Dependencies ---
+# ====================================================================
+# SATS High-Frequency Telemetry Pipeline - Backend Production Dependencies
+# ====================================================================
 
-# Core Web Framework
-fastapi
-uvicorn[standard]
+# Core Web Framework and Networking Layers
+fastapi>=0.110.0
+httpx>=0.27.0
+pydantic>=2.6.0
 
-# Networking & API
-httpx
-websockets
+# High-Performance Rust-Based ASGI Runtime Server
+granian>=1.2.0
 
-# Data & Exchange (Legacy/Future Use)
-ccxt
-
-# Utilities
-python-multipart
+# Testing and Regression Verification Utilities
+pytest>=8.0.0
