@@ -41,6 +41,7 @@ A `.env` configuration file must be located inside the `/backend` directory to e
    python -m venv venv
    source venv/bin/activate  # On Windows use: .\venv\Scripts\activate
   '''
+
 2. Install necessary framework dependencies:
   ```
   pip install -r requirements.txt
