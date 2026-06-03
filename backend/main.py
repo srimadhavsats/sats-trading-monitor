@@ -1,6 +1,8 @@
 import asyncio
 import re
+import time
 from contextlib import asynccontextmanager
+from typing import Dict, List
 
 import httpx
 
@@ -18,7 +20,7 @@ from config import (
 
 # Import the decentralized websocket connection manager instance
 from connection_manager import ConnectionManager
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import the centralized telemetry engine logger
@@ -58,6 +60,9 @@ app = FastAPI(
 
 manager = ConnectionManager()
 
+# In-memory structural storage tracking request invocation timestamps per client host
+RATE_LIMIT_CACHE: Dict[str, List[float]] = {}
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -85,10 +90,10 @@ async def health_check():
 
 
 @app.get("/metrics/{symbol}")
-async def get_stream_metrics(symbol: str):
+async def get_stream_metrics(symbol: str, request: Request):
     """
     Exposes real-time client channel allocation metrics for a designated symbol channel.
-    Executes strict validation processing on input route string arguments.
+    Executes strict validation and handles fixed-window tracking rate-limiting rules.
     """
     # Defensive Control: Enforce strict input verification to prevent parameter manipulation
     if not re.match(r"^[A-Za-z0-9\-]+$", symbol):
@@ -98,6 +103,30 @@ async def get_stream_metrics(symbol: str):
         raise HTTPException(
             status_code=400, detail="Malformed character format inside parameter field"
         )
+
+    # Defensive Control: Fixed-window request throttling algorithm
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    current_time = time.time()
+
+    if client_ip not in RATE_LIMIT_CACHE:
+        RATE_LIMIT_CACHE[client_ip] = []
+
+    # Purge historical entry instances resting outside the active 60-second logging frame
+    RATE_LIMIT_CACHE[client_ip] = [
+        t for t in RATE_LIMIT_CACHE[client_ip] if current_time - t < 60.0
+    ]
+
+    # Enforce request count constraint ceiling boundaries
+    if len(RATE_LIMIT_CACHE[client_ip]) >= 10:
+        SentinelLogger.error(
+            f"Rate limit threshold breach executed by host address vector: {client_ip}"
+        )
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit threshold exceeded. Maximum 10 pipeline metric requests per minute permitted.",
+        )
+
+    RATE_LIMIT_CACHE[client_ip].append(current_time)
 
     count = manager.get_active_count(symbol)
     return {"symbol": symbol, "active_connections": count}
@@ -115,7 +144,6 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str):
     enforces path parameter input sanitization, handshakes connections using ConnectionManager,
     evaluates whale tracking rules, and computes live intraday volatility indexes.
     """
-    # Defensive Control: Enforce cross-origin validation check to defend against CSWSH vectors
     request_origin = websocket.headers.get("origin")
     if request_origin not in ALLOWED_ORIGINS:
         SentinelLogger.error(
@@ -124,7 +152,6 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str):
         await websocket.close(code=1008)
         return
 
-    # Defensive Control: Enforce path token verification filtering out unauthorized character vectors
     if not re.match(r"^[A-Za-z0-9\-]+$", symbol):
         SentinelLogger.error(
             f"Malformed or non-whitelisted WebSocket stream parameter rejected: {symbol}"
