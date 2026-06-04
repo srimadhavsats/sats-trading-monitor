@@ -3,6 +3,7 @@
 # ====================================================================
 from typing import Dict, List
 
+from cache import CacheEngine  # Import the decoupled cache engine layer
 from fastapi import WebSocket
 from logger import SentinelLogger
 
@@ -13,23 +14,21 @@ class ConnectionManager:
     def __init__(self):
         # Track active socket connections mapped by their target symbols
         self.active_connections: Dict[str, List[WebSocket]] = {}
-        # In-memory rolling historical message cache to enable immediate client state seating
-        self.history_cache: Dict[str, List[dict]] = {}
-        # Bound historical allocation alignment match for client viewport tick limits
-        self.max_cache_length = 30
+        # Instantiate the independent data storage utility layer
+        self.cache = CacheEngine(max_size=30)
 
     async def connect(self, websocket: WebSocket, symbol: str):
         """Accepts a new client connection handshake, replays cached historical data, and registers the socket."""
         await websocket.accept()
 
-        # Stateful Recovery: Replay rolling historical data to instantly seed client charting states
-        if symbol in self.history_cache:
-            for cached_payload in self.history_cache[symbol]:
-                try:
-                    await websocket.send_json(cached_payload)
-                except Exception:
-                    # Catch early transport closures cleanly
-                    pass
+        # Stateful Recovery: Pull rolling historical matrix ticks out of decoupled cache layer
+        history = self.cache.get_history(symbol)
+        for cached_payload in history:
+            try:
+                await websocket.send_json(cached_payload)
+            except Exception:
+                # Catch early transport closures cleanly
+                pass
 
         if symbol not in self.active_connections:
             self.active_connections[symbol] = []
@@ -51,13 +50,8 @@ class ConnectionManager:
 
     async def broadcast_to_symbol(self, symbol: str, message: dict):
         """Broadcasts a telemetry payload to subscribers and caches the transaction into state history."""
-        # Stateful Control: Append incoming transactional snapshot into historical array cache bounds
-        if symbol not in self.history_cache:
-            self.history_cache[symbol] = []
-        self.history_cache[symbol].append(message)
-        self.history_cache[symbol] = self.history_cache[symbol][
-            -self.max_cache_length :
-        ]
+        # Stateful Control: Append incoming transaction snap snapshot via the abstraction utility
+        self.cache.set_tick(symbol, message)
 
         if symbol in self.active_connections:
             for connection in self.active_connections[symbol]:
