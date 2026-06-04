@@ -24,6 +24,7 @@ const lineCommand = (point, i, a) => {
 };
 
 const PriceCard = () => {
+  // Initialize state from local memory abstraction to lock preferences across sessions
   const [selectedSymbol, setSelectedSymbol] = useState(() =>
     storage.get("selected_symbol", "BTC-USDT"),
   );
@@ -34,13 +35,13 @@ const PriceCard = () => {
   const [sessionLow, setSessionLow] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
 
+  // Consume boundary limits from central config
   const maxTicks = CONFIG.MAX_CHART_TICKS;
 
   useEffect(() => {
     let socket = null;
     let reconnectTimer = null;
     let isMounted = true;
-    // Stateful tracking counter for exponential fallback calculation
     let connectionAttempts = 0;
 
     const connect = () => {
@@ -52,7 +53,6 @@ const PriceCard = () => {
       socket.onopen = () => {
         if (isMounted) {
           setConnected(true);
-          // Defensive Control: Reset retry counters back to initial states upon a verified network connection
           connectionAttempts = 0;
           console.log(`✅ Telemetry Link Established: ${selectedSymbol}`);
         }
@@ -66,6 +66,7 @@ const PriceCard = () => {
 
           const currentPrice = incomingData.price;
 
+          // Process and track global session extremes uniformly as data flows in
           setSessionHigh((prev) =>
             prev === null || currentPrice > prev ? currentPrice : prev,
           );
@@ -74,6 +75,9 @@ const PriceCard = () => {
           );
 
           setData(incomingData);
+
+          // Stateful Performance Seating: Appends frames into the array window.
+          // Handles both rapid historical stream replays and normal real-time updates seamlessly.
           setHistory((prev) => [...prev, currentPrice].slice(-maxTicks));
           setLastUpdated(new Date());
         } catch (err) {
@@ -85,11 +89,9 @@ const PriceCard = () => {
         if (!isMounted) return;
         setConnected(false);
 
-        // Defensive Control: Calculate an exponential backing delay period to safeguard resource consumption
         const baselineDelay = CONFIG.HEARTBEAT_RECONNECT_MS || 3000;
         const calculatedBackoff =
           baselineDelay * Math.pow(2, connectionAttempts);
-        // Constrain backing limits to an absolute maximum ceiling parameters of 30000ms
         const finalReconnectDelay = Math.min(30000, calculatedBackoff);
 
         console.warn(
@@ -120,6 +122,8 @@ const PriceCard = () => {
   const handleSymbolChange = (sym) => {
     setSelectedSymbol(sym);
     storage.set("selected_symbol", sym);
+    // Flush current historical layout bounds when transitioning channels to prevent data bleeding
+    setHistory([]);
     setSessionHigh(null);
     setSessionLow(null);
     setLastUpdated(null);
