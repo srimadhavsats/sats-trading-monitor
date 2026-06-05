@@ -9,6 +9,9 @@ import httpx
 # Import the computational analytics engine layer
 from analytics import MarketAnalytics
 
+# Import the security authentication layer manager
+from auth import SecurityAuthenticator
+
 # Import centralized configuration parameters
 from config import (
     ALLOWED_ORIGINS,
@@ -20,7 +23,14 @@ from config import (
 
 # Import the decentralized websocket connection manager instance
 from connection_manager import ConnectionManager
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import the centralized telemetry engine logger
@@ -59,6 +69,7 @@ app = FastAPI(
 )
 
 manager = ConnectionManager()
+authenticator = SecurityAuthenticator()
 
 # In-memory structural storage tracking request invocation timestamps per client host
 RATE_LIMIT_CACHE: Dict[str, List[float]] = {}
@@ -95,7 +106,6 @@ async def get_stream_metrics(symbol: str, request: Request):
     Exposes real-time client channel allocation metrics for a designated symbol channel.
     Executes strict validation and handles fixed-window tracking rate-limiting rules.
     """
-    # Defensive Control: Enforce strict input verification to prevent parameter manipulation
     if not re.match(r"^[A-Za-z0-9\-]+$", symbol):
         SentinelLogger.error(
             f"Malformed or non-whitelisted metrics parameter rejected: {symbol}"
@@ -104,19 +114,16 @@ async def get_stream_metrics(symbol: str, request: Request):
             status_code=400, detail="Malformed character format inside parameter field"
         )
 
-    # Defensive Control: Fixed-window request throttling algorithm
     client_ip = request.client.host if request.client else "127.0.0.1"
     current_time = time.time()
 
     if client_ip not in RATE_LIMIT_CACHE:
         RATE_LIMIT_CACHE[client_ip] = []
 
-    # Purge historical entry instances resting outside the active 60-second logging frame
     RATE_LIMIT_CACHE[client_ip] = [
         t for t in RATE_LIMIT_CACHE[client_ip] if current_time - t < 60.0
     ]
 
-    # Enforce request count constraint ceiling boundaries
     if len(RATE_LIMIT_CACHE[client_ip]) >= 10:
         SentinelLogger.error(
             f"Rate limit threshold breach executed by host address vector: {client_ip}"
@@ -138,12 +145,14 @@ async def get_stream_metrics(symbol: str, request: Request):
 
 
 @app.websocket("/ws/price/{symbol}")
-async def websocket_endpoint(websocket: WebSocket, symbol: str):
+async def websocket_endpoint(
+    websocket: WebSocket, symbol: str, token: str = Query(None)
+):
     """
-    Asynchronous WebSocket stream handler. Performs strict cross-origin verification,
-    enforces path parameter input sanitization, handshakes connections using ConnectionManager,
-    evaluates whale tracking rules, and computes live intraday volatility indexes.
+    Asynchronous WebSocket stream handler. Performs cross-origin verification,
+    input sanitization, cryptographic token validation, and manages active connection state.
     """
+    # Defensive Control: Enforce cross-origin validation check to defend against CSWSH vectors
     request_origin = websocket.headers.get("origin")
     if request_origin not in ALLOWED_ORIGINS:
         SentinelLogger.error(
@@ -152,9 +161,18 @@ async def websocket_endpoint(websocket: WebSocket, symbol: str):
         await websocket.close(code=1008)
         return
 
+    # Defensive Control: Enforce path token verification filtering out unauthorized character vectors
     if not re.match(r"^[A-Za-z0-9\-]+$", symbol):
         SentinelLogger.error(
             f"Malformed or non-whitelisted WebSocket stream parameter rejected: {symbol}"
+        )
+        await websocket.close(code=1008)
+        return
+
+    # Defensive Control: Enforce token parameter validation checking against cryptographic signatures
+    if not authenticator.validate_handshake_token(token):
+        SentinelLogger.error(
+            f"Unauthorized WebSocket handshake rejected: Invalid or missing token parameter."
         )
         await websocket.close(code=1008)
         return
