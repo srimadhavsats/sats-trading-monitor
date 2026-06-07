@@ -14,24 +14,34 @@ permissions:
 
 jobs:
   test-backend:
-    name: Execute Backend Verification Suite
+    name: Run Verification Suite (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Cross-runtime validation tracking matrices
+        python-version: ["3.12", "3.13"]
 
     steps:
       - name: Checkout repository code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.13 runtime environment
+      - name: Set up Python ${{ matrix.python-version }} runtime environment
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
           cache: "pip"
 
       - name: Install backend dependencies and testing utilities
         run: |
           python -m pip install --upgrade pip
-          if [ -f backend/requirements.txt ]; then pip install -r backend/requirements.txt; fi
-          pip install pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pytest bandit
+
+      - name: Execute automated static application security testing via Bandit
+        run: |
+          # Audit application layer scripts for security flaws, ignoring non-production test files
+          bandit -r backend -x backend/test_*.py -ll
 
       - name: Run automated unit regression tests via pytest
         run: |
