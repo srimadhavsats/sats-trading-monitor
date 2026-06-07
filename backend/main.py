@@ -39,6 +39,10 @@ from logger import SentinelLogger
 # Import formalized data validation schemas
 from schemas import HealthCheckResponse, MarketStreamPayload
 
+# Global state counters for system telemetry observability
+PIPELINE_START_TIME = time.time()
+TOTAL_PROCESSED_TICKS = 0
+
 
 # --------------------------------------------------------------------
 # Application Lifecycle Context Manager (Lifespan)
@@ -73,6 +77,8 @@ authenticator = SecurityAuthenticator()
 
 # In-memory structural storage tracking request invocation timestamps per client host
 RATE_LIMIT_CACHE: Dict[str, List[float]] = {}
+# Defensive Tracking Matrix: Tracks active concurrent WebSocket socket allocations per host IP
+WS_CONCURRENT_TRACKER: Dict[str, int] = {}
 
 app.add_middleware(
     CORSMiddleware,
@@ -150,8 +156,10 @@ async def websocket_endpoint(
 ):
     """
     Asynchronous WebSocket stream handler. Performs cross-origin verification,
-    input sanitization, cryptographic token validation, and manages active connection state.
+    enforces path sanitization, implements socket flood protection, and manages data distribution.
     """
+    global TOTAL_PROCESSED_TICKS
+
     # Defensive Control: Enforce cross-origin validation check to defend against CSWSH vectors
     request_origin = websocket.headers.get("origin")
     if request_origin not in ALLOWED_ORIGINS:
@@ -176,6 +184,19 @@ async def websocket_endpoint(
         )
         await websocket.close(code=1008)
         return
+
+    # Defensive Control: Enforce socket flood protection constraint rules per host identifier
+    client_ip = websocket.client.host if websocket.client else "127.0.0.1"
+    current_ws_count = WS_CONCURRENT_TRACKER.get(client_ip, 0)
+    if current_ws_count >= 5:
+        SentinelLogger.error(
+            f"Connection flood protection triggered. Rejecting socket upgrade for host vector: {client_ip}"
+        )
+        await websocket.close(code=1008)
+        return
+
+    # Register active allocation token increment
+    WS_CONCURRENT_TRACKER[client_ip] = current_ws_count + 1
 
     await manager.connect(websocket, symbol)
 
@@ -237,6 +258,7 @@ async def websocket_endpoint(
                             await manager.broadcast_to_symbol(
                                 symbol, validated_payload.model_dump()
                             )
+                            TOTAL_PROCESSED_TICKS += 1
                             SentinelLogger.broadcast(clean_key, price)
                     else:
                         SentinelLogger.error(
@@ -255,3 +277,11 @@ async def websocket_endpoint(
     except Exception as e:
         SentinelLogger.error(f"Internal Pipeline Telemetry Exception: {e}")
         manager.disconnect(websocket, symbol)
+    finally:
+        # Decouple registration matrix count states accurately during close cycles
+        if client_ip in WS_CONCURRENT_TRACKER:
+            WS_CONCURRENT_TRACKER[client_ip] = max(
+                0, WS_CONCURRENT_TRACKER[client_ip] - 1
+            )
+            if WS_CONCURRENT_TRACKER[client_ip] == 0:
+                del WS_CONCURRENT_TRACKER[client_ip]
