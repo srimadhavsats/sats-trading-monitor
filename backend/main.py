@@ -106,6 +106,21 @@ async def health_check():
     }
 
 
+@app.get("/metrics/system")
+async def get_system_telemetry():
+    """
+    Exposes global infrastructure operational performance statistics.
+    Calculates operational lifespan bounds, network ingestion volume, and channel load.
+    """
+    uptime_seconds = time.time() - PIPELINE_START_TIME
+    return {
+        "uptime_seconds": round(uptime_seconds, 2),
+        "total_processed_ticks": TOTAL_PROCESSED_TICKS,
+        "active_websocket_channels": sum(WS_CONCURRENT_TRACKER.values()),
+        "tracked_host_vectors": len(WS_CONCURRENT_TRACKER),
+    }
+
+
 @app.get("/metrics/{symbol}")
 async def get_stream_metrics(symbol: str, request: Request):
     """
@@ -160,7 +175,6 @@ async def websocket_endpoint(
     """
     global TOTAL_PROCESSED_TICKS
 
-    # Defensive Control: Enforce cross-origin validation check to defend against CSWSH vectors
     request_origin = websocket.headers.get("origin")
     if request_origin not in ALLOWED_ORIGINS:
         SentinelLogger.error(
@@ -169,7 +183,6 @@ async def websocket_endpoint(
         await websocket.close(code=1008)
         return
 
-    # Defensive Control: Enforce path token verification filtering out unauthorized character vectors
     if not re.match(r"^[A-Za-z0-9\-]+$", symbol):
         SentinelLogger.error(
             f"Malformed or non-whitelisted WebSocket stream parameter rejected: {symbol}"
@@ -177,7 +190,6 @@ async def websocket_endpoint(
         await websocket.close(code=1008)
         return
 
-    # Defensive Control: Enforce token parameter validation checking against cryptographic signatures
     if not authenticator.validate_handshake_token(token):
         SentinelLogger.error(
             f"Unauthorized WebSocket handshake rejected: Invalid or missing token parameter."
@@ -185,7 +197,6 @@ async def websocket_endpoint(
         await websocket.close(code=1008)
         return
 
-    # Defensive Control: Enforce socket flood protection constraint rules per host identifier
     client_ip = websocket.client.host if websocket.client else "127.0.0.1"
     current_ws_count = WS_CONCURRENT_TRACKER.get(client_ip, 0)
     if current_ws_count >= 5:
@@ -195,7 +206,6 @@ async def websocket_endpoint(
         await websocket.close(code=1008)
         return
 
-    # Register active allocation token increment
     WS_CONCURRENT_TRACKER[client_ip] = current_ws_count + 1
 
     await manager.connect(websocket, symbol)
@@ -278,7 +288,6 @@ async def websocket_endpoint(
         SentinelLogger.error(f"Internal Pipeline Telemetry Exception: {e}")
         manager.disconnect(websocket, symbol)
     finally:
-        # Decouple registration matrix count states accurately during close cycles
         if client_ip in WS_CONCURRENT_TRACKER:
             WS_CONCURRENT_TRACKER[client_ip] = max(
                 0, WS_CONCURRENT_TRACKER[client_ip] - 1
