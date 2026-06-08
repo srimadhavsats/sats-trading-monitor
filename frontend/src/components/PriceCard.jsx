@@ -45,10 +45,7 @@ const PriceCard = () => {
     const connect = () => {
       if (!isMounted) return;
 
-      // Security Configuration: Establish the fallback authorization signature credential
       const authToken = "sats_dev_fallback_secure_token_2026";
-
-      // Defensive Control: Append the validation token parameter cleanly into the connection URI path
       const wsUrl = `${CONFIG.BACKEND_WS_URL}/ws/price/${selectedSymbol}?token=${authToken}`;
       socket = new WebSocket(wsUrl);
 
@@ -62,6 +59,11 @@ const PriceCard = () => {
 
       socket.onmessage = (event) => {
         if (!isMounted) return;
+
+        // Resource Efficiency Framework: Freeze charting computations and state allocation
+        // if the browser tab is backgrounded or minimized to save client hardware cycles.
+        if (document.hidden) return;
+
         try {
           const incomingData = JSON.parse(event.data);
           if (!incomingData || !incomingData.price) return;
