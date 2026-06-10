@@ -202,6 +202,7 @@ async def websocket_endpoint(
     enforces path sanitization, implements socket flood protection, and manages data distribution.
     """
     global TOTAL_PROCESSED_TICKS
+    global WS_CONCURRENT_TRACKER
 
     request_origin = websocket.headers.get("origin")
     if request_origin not in ALLOWED_ORIGINS:
@@ -321,4 +322,4 @@ async def websocket_endpoint(
                 0, WS_CONCURRENT_TRACKER[client_ip] - 1
             )
             if WS_CONCURRENT_TRACKER[client_ip] == 0:
-                del WS_CONCURRENT_TRACKER
+                del WS_CONCURRENT_TRACKER[client_ip]
