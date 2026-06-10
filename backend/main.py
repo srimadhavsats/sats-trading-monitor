@@ -36,6 +36,9 @@ from fastapi.middleware.cors import CORSMiddleware
 # Import the centralized telemetry engine logger
 from logger import SentinelLogger
 
+# Import the decoupled traffic regulation layer manager
+from rate_limiter import SlidingWindowRateLimiter
+
 # Import formalized data validation schemas
 from schemas import HealthCheckResponse, MarketStreamPayload
 
@@ -46,6 +49,7 @@ TOTAL_PROCESSED_TICKS = 0
 # Instantiate core architectural layers
 manager = ConnectionManager()
 authenticator = SecurityAuthenticator()
+metrics_limiter = SlidingWindowRateLimiter(window_seconds=60.0, max_requests=10)
 
 
 # --------------------------------------------------------------------
@@ -94,8 +98,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# In-memory structural storage tracking request invocation timestamps per client host
-RATE_LIMIT_CACHE: Dict[str, List[float]] = {}
 # Defensive Tracking Matrix: Tracks active concurrent WebSocket socket allocations per host IP
 WS_CONCURRENT_TRACKER: Dict[str, int] = {}
 
@@ -171,16 +173,9 @@ async def get_stream_metrics(symbol: str, request: Request):
         )
 
     client_ip = request.client.host if request.client else "127.0.0.1"
-    current_time = time.time()
 
-    if client_ip not in RATE_LIMIT_CACHE:
-        RATE_LIMIT_CACHE[client_ip] = []
-
-    RATE_LIMIT_CACHE[client_ip] = [
-        t for t in RATE_LIMIT_CACHE[client_ip] if current_time - t < 60.0
-    ]
-
-    if len(RATE_LIMIT_CACHE[client_ip]) >= 10:
+    # Defensive Control: Enforce structured traffic throttling constraints using the sliding window manager
+    if metrics_limiter.is_rate_limited(client_ip):
         SentinelLogger.error(
             f"Rate limit threshold breach executed by host address vector: {client_ip}"
         )
@@ -188,8 +183,6 @@ async def get_stream_metrics(symbol: str, request: Request):
             status_code=429,
             detail="Rate limit threshold exceeded. Maximum 10 pipeline metric requests per minute permitted.",
         )
-
-    RATE_LIMIT_CACHE[client_ip].append(current_time)
 
     count = manager.get_active_count(symbol)
     return {"symbol": symbol, "active_connections": count}
@@ -328,4 +321,4 @@ async def websocket_endpoint(
                 0, WS_CONCURRENT_TRACKER[client_ip] - 1
             )
             if WS_CONCURRENT_TRACKER[client_ip] == 0:
-                del WS_CONCURRENT_TRACKER[client_ip]
+                del WS_CONCURRENT_TRACKER
