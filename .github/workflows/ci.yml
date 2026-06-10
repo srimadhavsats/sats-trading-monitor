@@ -19,7 +19,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Cross-runtime validation tracking matrices
         python-version: ["3.12", "3.13"]
 
     steps:
@@ -40,8 +39,8 @@ jobs:
 
       - name: Execute automated static application security testing via Bandit
         run: |
-          # Audit application layer scripts for security flaws, ignoring non-production test files
-          bandit -r backend -x backend/test_*.py -ll
+          # Wrap the exclusion pattern in single quotes to block Bash glob expansion
+          bandit -r backend -x 'backend/test_*.py' -ll
 
       - name: Run automated unit regression tests via pytest
         run: |
