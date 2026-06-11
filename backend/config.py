@@ -10,6 +10,12 @@ BYBIT_API_URL = os.getenv("BYBIT_API_URL", "https://api.bybit.com/v5/market/tick
 CONNECTION_TIMEOUT_SECONDS = float(os.getenv("CONNECTION_TIMEOUT_SECONDS", "10.0"))
 STREAM_HEARTBEAT_DELAY = float(os.getenv("STREAM_HEARTBEAT_DELAY", "1.0"))
 
+# Network Transport Connection Pool Configurations
+HTTPX_MAX_CONNECTIONS = int(os.getenv("HTTPX_MAX_CONNECTIONS", "100"))
+HTTPX_MAX_KEEPALIVE_CONNECTIONS = int(
+    os.getenv("HTTPX_MAX_KEEPALIVE_CONNECTIONS", "20")
+)
+
 # Frontend Visualization Allocations
 MAX_CHART_TICKS = int(os.getenv("MAX_CHART_TICKS", "30"))
 
