@@ -35,7 +35,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install pytest bandit
+          pip install pytest bandit black isort
+
+      - name: Validate Python import排序 structures via isort
+        run: |
+          isort --check-only --profile black backend
+
+      - name: Verify code style layout formatting via Black
+        run: |
+          black --check backend
 
       - name: Execute automated static application security testing via Bandit
         run: |
