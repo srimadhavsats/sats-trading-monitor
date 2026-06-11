@@ -145,6 +145,45 @@ async def health_check():
     }
 
 
+@app.get("/health/diagnostics")
+async def health_diagnostics():
+    """
+    Evaluates real-time upstream network latency thresholds and connectivity bounds.
+    Performs an out-of-band high-resolution measurement to the oracle gateway.
+    """
+    start_time = time.time()
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(
+                BYBIT_API_URL, params={"category": "spot", "symbol": "BTCUSDT"}
+            )
+            latency_ms = (time.time() - start_time) * 1000
+
+            if response.status_code == 200:
+                return {
+                    "status": "Healthy",
+                    "upstream_gateway": "Bybit API v5",
+                    "latency_ms": round(latency_ms, 2),
+                    "connected": True,
+                }
+            else:
+                return {
+                    "status": "Degraded",
+                    "upstream_gateway": "Bybit API v5",
+                    "latency_ms": round(latency_ms, 2),
+                    "connected": False,
+                    "error": f"HTTP Status {response.status_code}",
+                }
+    except Exception as err:
+        return {
+            "status": "Unhealthy",
+            "upstream_gateway": "Bybit API v5",
+            "latency_ms": round((time.time() - start_time) * 1000, 2),
+            "connected": False,
+            "error": str(err),
+        }
+
+
 @app.get("/metrics/system")
 async def get_system_telemetry():
     """
