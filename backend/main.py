@@ -18,6 +18,8 @@ from config import (
     BYBIT_API_URL,
     CONNECTION_TIMEOUT_SECONDS,
     DEFAULT_WHALE_THRESHOLDS,
+    HTTPX_MAX_CONNECTIONS,
+    HTTPX_MAX_KEEPALIVE_CONNECTIONS,
     STREAM_HEARTBEAT_DELAY,
 )
 
@@ -248,11 +250,20 @@ async def websocket_endpoint(
         "Accept": "application/json",
     }
 
+    # Instantiating structured connection reuse profiles
+    client_limits = httpx.Limits(
+        max_connections=HTTPX_MAX_CONNECTIONS,
+        max_keepalive_connections=HTTPX_MAX_KEEPALIVE_CONNECTIONS,
+    )
+
     try:
         SentinelLogger.info(f"Polling Data Feed for: {api_symbol}...")
 
         async with httpx.AsyncClient(
-            timeout=CONNECTION_TIMEOUT_SECONDS, headers=headers, trust_env=True
+            timeout=CONNECTION_TIMEOUT_SECONDS,
+            headers=headers,
+            trust_env=True,
+            limits=client_limits,
         ) as client:
             while True:
                 try:
