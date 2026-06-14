@@ -41,6 +41,9 @@ from logger import SentinelLogger
 # Import the decoupled traffic regulation layer manager
 from rate_limiter import SlidingWindowRateLimiter
 
+# Import the network resilience layer manager
+from retry_handler import ResilientRetryHandler
+
 # Import formalized data validation schemas
 from schemas import HealthCheckResponse, MarketStreamPayload
 
@@ -295,6 +298,9 @@ async def websocket_endpoint(
         max_keepalive_connections=HTTPX_MAX_KEEPALIVE_CONNECTIONS,
     )
 
+    # Initialize the retry handler instance for this socket subscription session
+    polling_retry_handler = ResilientRetryHandler(base_delay=1.0, max_delay=15.0)
+
     try:
         SentinelLogger.info(f"Polling Data Feed for: {api_symbol}...")
 
@@ -349,15 +355,24 @@ async def websocket_endpoint(
                             )
                             TOTAL_PROCESSED_TICKS += 1
                             SentinelLogger.broadcast(clean_key, price)
+
+                            # Reset error loops upon a clean data delivery cycle
+                            polling_retry_handler.reset()
                     else:
                         SentinelLogger.error(
                             f"Oracle Edge API Connection Warning: Status {response.status_code}"
                         )
+                        error_delay = polling_retry_handler.increment_failure()
+                        await asyncio.sleep(error_delay)
+                        continue
 
                 except httpx.HTTPError as http_err:
                     SentinelLogger.error(
                         f"Network transport anomaly encountered during poll: {http_err}"
                     )
+                    error_delay = polling_retry_handler.increment_failure()
+                    await asyncio.sleep(error_delay)
+                    continue
 
                 await asyncio.sleep(STREAM_HEARTBEAT_DELAY)
 
