@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
+// Import the abstracted unified data connection hook
+import { useTelemetry } from "../context/TelemetryContext";
 // Import centralized config and theme mappings
 import { CONFIG } from "../config";
 import { THEME } from "../theme";
@@ -9,8 +11,6 @@ import {
   formatPriceChange,
   formatSpread,
 } from "../utils/formatters";
-// Import centralized client storage abstraction layer
-import { storage } from "../utils/storage";
 
 const lineCommand = (point, i, a) => {
   const [x, y] = point;
@@ -24,109 +24,18 @@ const lineCommand = (point, i, a) => {
 };
 
 const PriceCard = () => {
-  const [selectedSymbol, setSelectedSymbol] = useState(() =>
-    storage.get("selected_symbol", "BTC-USDT"),
-  );
-  const [data, setData] = useState(null);
-  const [connected, setConnected] = useState(false);
-  const [history, setHistory] = useState([]);
-  const [sessionHigh, setSessionHigh] = useState(null);
-  const [sessionLow, setSessionLow] = useState(null);
-  const [lastUpdated, setLastUpdated] = useState(null);
+  // Ingest stream updates dynamically from the shared telemetry context channel
+  const {
+    selectedSymbol,
+    data,
+    connected,
+    history,
+    sessionHigh,
+    sessionLow,
+    changeSymbol,
+  } = useTelemetry();
 
-  const maxTicks = CONFIG.MAX_CHART_TICKS;
-
-  useEffect(() => {
-    let socket = null;
-    let reconnectTimer = null;
-    let isMounted = true;
-    let connectionAttempts = 0;
-
-    const connect = () => {
-      if (!isMounted) return;
-
-      const authToken = "sats_dev_fallback_secure_token_2026";
-      const wsUrl = `${CONFIG.BACKEND_WS_URL}/ws/price/${selectedSymbol}?token=${authToken}`;
-      socket = new WebSocket(wsUrl);
-
-      socket.onopen = () => {
-        if (isMounted) {
-          setConnected(true);
-          connectionAttempts = 0;
-          console.log(`✅ Telemetry Link Established: ${selectedSymbol}`);
-        }
-      };
-
-      socket.onmessage = (event) => {
-        if (!isMounted) return;
-
-        // Resource Efficiency Framework: Freeze charting computations and state allocation
-        // if the browser tab is backgrounded or minimized to save client hardware cycles.
-        if (document.hidden) return;
-
-        try {
-          const incomingData = JSON.parse(event.data);
-          if (!incomingData || !incomingData.price) return;
-
-          const currentPrice = incomingData.price;
-
-          setSessionHigh((prev) =>
-            prev === null || currentPrice > prev ? currentPrice : prev,
-          );
-          setSessionLow((prev) =>
-            prev === null || currentPrice < prev ? currentPrice : prev,
-          );
-
-          setData(incomingData);
-          setHistory((prev) => [...prev, currentPrice].slice(-maxTicks));
-          setLastUpdated(new Date());
-        } catch (err) {
-          console.error("❌ Oracle Data Error:", err);
-        }
-      };
-
-      socket.onclose = () => {
-        if (!isMounted) return;
-        setConnected(false);
-
-        const baselineDelay = CONFIG.HEARTBEAT_RECONNECT_MS || 3000;
-        const calculatedBackoff =
-          baselineDelay * Math.pow(2, connectionAttempts);
-        const finalReconnectDelay = Math.min(30000, calculatedBackoff);
-
-        console.warn(
-          `📡 Network link dropped. Retrying gateway connection in ${finalReconnectDelay}ms (Attempt ${connectionAttempts + 1})`,
-        );
-
-        connectionAttempts++;
-        reconnectTimer = setTimeout(connect, finalReconnectDelay);
-      };
-
-      socket.onerror = () => {
-        if (socket) socket.close();
-      };
-    };
-
-    connect();
-
-    return () => {
-      isMounted = false;
-      if (socket) {
-        socket.onclose = null;
-        socket.close();
-      }
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-    };
-  }, [selectedSymbol]);
-
-  const handleSymbolChange = (sym) => {
-    setSelectedSymbol(sym);
-    storage.set("selected_symbol", sym);
-    setHistory([]);
-    setSessionHigh(null);
-    setSessionLow(null);
-    setLastUpdated(null);
-  };
+  const maxTicks = CONFIG.MAX_CHART_TICKS || 30;
 
   if (!data) {
     return (
@@ -170,7 +79,7 @@ const PriceCard = () => {
         {CONFIG.TRACKED_SYMBOLS.map((sym) => (
           <button
             key={sym}
-            onClick={() => handleSymbolChange(sym)}
+            onClick={() => changeSymbol(sym)}
             className={`text-[8px] font-black px-2 py-1 rounded border transition-all ${selectedSymbol === sym ? "bg-neutral-100 text-black border-neutral-100" : "bg-transparent text-neutral-500 border-neutral-800 hover:border-neutral-600"}`}
           >
             {sym.split("-")[0]}
