@@ -1,31 +1,37 @@
+import React from "react";
+// Import the global streaming state engine provider
+import { TelemetryProvider } from "./context/TelemetryContext";
+// Import technical defense sandbox shields
+import ErrorBoundary from "./components/ErrorBoundary";
+// Import downstream telemetry data consumers
 import PriceCard from "./components/PriceCard";
+import NetworkDiagnostics from "./components/NetworkDiagnostics";
 
-/**
- * SATS Sentinel v4.1 - Primary Core Shell
- * Establishes the viewport framework and responsive interface layout grid.
- */
-function App() {
+const App = () => {
   return (
-    <div className="min-h-screen bg-neutral-950 p-10 text-white font-sans">
-      {/* Institutional System Header Block */}
-      <header className="mb-10 border-b border-neutral-800 pb-5">
-        <h1 className="text-4xl font-black tracking-tighter text-emerald-400 italic">
-          SATS SENTINEL v4.1
-        </h1>
-        <p className="mt-2 text-neutral-400 text-sm uppercase tracking-widest">
-          Institutional Liquidity Monitor
-        </p>
-      </header>
+    <div className="min-h-screen bg-black text-neutral-100 flex flex-col items-center justify-center gap-6 p-4 select-none">
+      {/* 1. Global Sandbox Error Boundary Guard */}
+      <ErrorBoundary>
+        {/* 2. Global Stream Context Node Provider */}
+        <TelemetryProvider>
+          {/* Dashboard Branding Header */}
+          <div className="flex flex-col items-center gap-1 mb-2">
+            <h1 className="text-sm font-black uppercase tracking-[0.4em] text-neutral-400">
+              Sats Trading Monitor
+            </h1>
+            <p className="text-[9px] font-mono font-black text-neutral-600 uppercase tracking-widest">
+              High-Frequency Institutional Telemetry v4.2
+            </p>
+          </div>
 
-      {/* Main Monitoring Viewport Grid */}
-      <main className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Core Financial Oracle Feed Module */}
-        <PriceCard />
-
-        {/* Placement slots for upcoming sub-second analytical modules */}
-      </main>
+          {/* 3. Stream-Dependent Interactive Display Components */}
+          <PriceCard />
+          <NetworkDiagnostics />
+        </TelemetryProvider>
+      </ErrorBoundary>
     </div>
   );
-}
+};
 
 export default App;
+// For context-based tracking pipelines, this completes the layout tree map.
