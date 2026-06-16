@@ -158,7 +158,7 @@ async def health_diagnostics():
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(
-                BYBIT_API_URL, params={"category": "spot", "symbol": "BTCUSDT"}
+                BYBYIT_API_URL, params={"category": "spot", "symbol": "BTCUSDT"}
             )
             latency_ms = (time.time() - start_time) * 1000
 
@@ -208,7 +208,10 @@ async def get_stream_metrics(symbol: str, request: Request):
     Exposes real-time client channel allocation metrics for a designated symbol channel.
     Executes strict validation and handles fixed-window tracking rate-limiting rules.
     """
-    if not re.match(r"^[A-Za-z0-9\-]+$", symbol):
+    # Adaptive Normalization: Enforce casing invariance early to block string lookup drift
+    symbol = symbol.upper()
+
+    if not re.match(r"^[A-Z0-9\-]+$", symbol):
         SentinelLogger.error(
             f"Malformed or non-whitelisted metrics parameter rejected: {symbol}"
         )
@@ -248,6 +251,9 @@ async def websocket_endpoint(
     global TOTAL_PROCESSED_TICKS
     global WS_CONCURRENT_TRACKER
 
+    # Adaptive Normalization: Enforce casing invariance early to block string lookup drift
+    symbol = symbol.upper()
+
     request_origin = websocket.headers.get("origin")
     if request_origin not in ALLOWED_ORIGINS:
         SentinelLogger.error(
@@ -256,7 +262,7 @@ async def websocket_endpoint(
         await websocket.close(code=1008)
         return
 
-    if not re.match(r"^[A-Za-z0-9\-]+$", symbol):
+    if not re.match(r"^[A-Z0-9\-]+$", symbol):
         SentinelLogger.error(
             f"Malformed or non-whitelisted WebSocket stream parameter rejected: {symbol}"
         )
