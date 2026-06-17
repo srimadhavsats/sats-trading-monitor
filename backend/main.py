@@ -5,14 +5,8 @@ from contextlib import asynccontextmanager
 from typing import Dict, List
 
 import httpx
-
-# Import the computational analytics engine layer
 from analytics import MarketAnalytics
-
-# Import the security authentication layer manager
 from auth import SecurityAuthenticator
-
-# Import centralized configuration parameters
 from config import (
     ALLOWED_ORIGINS,
     BYBIT_API_URL,
@@ -22,8 +16,6 @@ from config import (
     HTTPX_MAX_KEEPALIVE_CONNECTIONS,
     STREAM_HEARTBEAT_DELAY,
 )
-
-# Import the decentralized websocket connection manager instance
 from connection_manager import ConnectionManager
 from fastapi import (
     FastAPI,
@@ -34,17 +26,9 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-
-# Import the centralized telemetry engine logger
 from logger import SentinelLogger
-
-# Import the decoupled traffic regulation layer manager
 from rate_limiter import SlidingWindowRateLimiter
-
-# Import the network resilience layer manager
 from retry_handler import ResilientRetryHandler
-
-# Import formalized data validation schemas
 from schemas import HealthCheckResponse, MarketStreamPayload
 
 # Global state counters for system telemetry observability
@@ -158,7 +142,7 @@ async def health_diagnostics():
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(
-                BYBYIT_API_URL, params={"category": "spot", "symbol": "BTCUSDT"}
+                BYBIT_API_URL, params={"category": "spot", "symbol": "BTCUSDT"}
             )
             latency_ms = (time.time() - start_time) * 1000
 
@@ -216,7 +200,8 @@ async def get_stream_metrics(symbol: str, request: Request):
             f"Malformed or non-whitelisted metrics parameter rejected: {symbol}"
         )
         raise HTTPException(
-            status_code=400, detail="Malformed character format inside parameter field"
+            status_code=400,
+            detail="Malformed character format inside parameter field",
         )
 
     client_ip = request.client.host if request.client else "127.0.0.1"
@@ -271,7 +256,7 @@ async def websocket_endpoint(
 
     if not authenticator.validate_handshake_token(token):
         SentinelLogger.error(
-            f"Unauthorized WebSocket handshake rejected: Invalid or missing token parameter."
+            "Unauthorized WebSocket handshake rejected: Invalid or missing token parameter."
         )
         await websocket.close(code=1008)
         return
