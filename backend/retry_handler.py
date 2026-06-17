@@ -4,12 +4,16 @@
 import random
 import time
 
+
 class ResilientRetryHandler:
     """
     Manages mathematical exponential backoff calculations with randomized
     jitter parameters to protect upstream oracle endpoints from call floods.
     """
-    def __init__(self, base_delay: float = 1.0, max_delay: float = 30.0, factor: float = 2.0):
+
+    def __init__(
+        self, base_delay: float = 1.0, max_delay: float = 30.0, factor: float = 2.0
+    ):
         self.base_delay = base_delay
         self.max_delay = max_delay
         self.factor = factor
@@ -21,7 +25,7 @@ class ResilientRetryHandler:
         Delay = min(max_delay, base_delay * (factor ^ attempts))
         Applies a uniform randomized jitter to distribute network load.
         """
-        calculated_delay = self.base_delay * (self.factor ** self.attempts)
+        calculated_delay = self.base_delay * (self.factor**self.attempts)
         bounded_delay = min(self.max_delay, calculated_delay)
 
         # Inject randomized jitter: vary final timing uniformly between 0 and the delay ceiling
