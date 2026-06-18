@@ -6,16 +6,17 @@ import ErrorBoundary from "./components/ErrorBoundary";
 // Import downstream telemetry data consumers
 import PriceCard from "./components/PriceCard";
 import NetworkDiagnostics from "./components/NetworkDiagnostics";
+import RoomMetrics from "./components/RoomMetrics";
 
 const App = () => {
   return (
-    <div className="min-h-screen bg-black text-neutral-100 flex flex-col items-center justify-center gap-6 p-4 select-none">
+    <div className="min-h-screen bg-black text-neutral-100 flex flex-col items-center justify-start gap-6 p-8 select-none">
       {/* 1. Global Sandbox Error Boundary Guard */}
       <ErrorBoundary>
         {/* 2. Global Stream Context Node Provider */}
         <TelemetryProvider>
           {/* Dashboard Branding Header */}
-          <div className="flex flex-col items-center gap-1 mb-2">
+          <div className="flex flex-col items-center gap-1 mt-4 mb-2">
             <h1 className="text-sm font-black uppercase tracking-[0.4em] text-neutral-400">
               Sats Trading Monitor
             </h1>
@@ -27,6 +28,7 @@ const App = () => {
           {/* 3. Stream-Dependent Interactive Display Components */}
           <PriceCard />
           <NetworkDiagnostics />
+          <RoomMetrics />
         </TelemetryProvider>
       </ErrorBoundary>
     </div>
@@ -34,4 +36,3 @@ const App = () => {
 };
 
 export default App;
-// For context-based tracking pipelines, this completes the layout tree map.
