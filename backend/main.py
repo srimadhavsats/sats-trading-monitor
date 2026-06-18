@@ -171,6 +171,12 @@ async def health_diagnostics():
         }
 
 
+@app.get("/metrics/rooms/all")
+async def get_all_room_metrics():
+    """Exposes a live summary matrix of active connection counts grouped by isolated channel rooms."""
+    return {room: len(sockets) for room, sockets in manager.active_connections.items()}
+
+
 @app.get("/metrics/system")
 async def get_system_telemetry():
     """
@@ -304,7 +310,8 @@ async def websocket_endpoint(
             while True:
                 try:
                     response = await client.get(
-                        BYBIT_API_URL, params={"category": "spot", "symbol": api_symbol}
+                        BYBYIT_API_URL,
+                        params={"category": "spot", "symbol": api_symbol},
                     )
 
                     if response.status_code == 200:
