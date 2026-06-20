@@ -35,10 +35,136 @@ from schemas import HealthCheckResponse, MarketStreamPayload
 PIPELINE_START_TIME = time.time()
 TOTAL_PROCESSED_TICKS = 0
 
+# Shared Global Memory Cache for data persistence
+GLOBAL_MARKET_CACHE: Dict[str, dict] = {}
+
+# Background task cancellation reference tracker
+BACKGROUND_WORKER_TASK: getattr(asyncio, "Task", None) = None
+
 # Instantiate core architectural layers
 manager = ConnectionManager()
 authenticator = SecurityAuthenticator()
 metrics_limiter = SlidingWindowRateLimiter(window_seconds=60.0, max_requests=10)
+
+
+# --------------------------------------------------------------------
+# Centralized Background Ingestion Engine
+# --------------------------------------------------------------------
+async def central_ingestion_worker():
+    """
+    Decoupled background worker loop that runs for the entire lifetime of the server.
+    Polls whitelisted symbols into a central data cache and distributes frames to rooms.
+    """
+    global TOTAL_PROCESSED_TICKS
+    SentinelLogger.info(
+        "Spawning centralized asynchronous market ingestion worker thread..."
+    )
+
+    symbols_to_track = ["BTC-USDT", "ETH-USDT", "SOL-USDT"]
+    polling_retry_handler = ResilientRetryHandler(base_delay=1.0, max_delay=15.0)
+
+    client_limits = httpx.Limits(
+        max_connections=HTTPX_MAX_CONNECTIONS,
+        max_keepalive_connections=HTTPX_MAX_KEEPALIVE_CONNECTIONS,
+    )
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=CONNECTION_TIMEOUT_SECONDS,
+            headers=headers,
+            trust_env=True,
+            limits=client_limits,
+        ) as client:
+            while True:
+                for symbol in symbols_to_track:
+                    api_symbol = symbol.replace("-", "")
+                    if "SATS" in api_symbol and "1000" not in api_symbol:
+                        api_symbol = f"1000{api_symbol}"
+
+                    try:
+                        response = await client.get(
+                            BYBIT_API_URL,
+                            params={"category": "spot", "symbol": api_symbol},
+                        )
+
+                        if response.status_code == 200:
+                            data = response.json()
+                            result = data.get("result", {}).get("list", [{}])[0]
+
+                            if result:
+                                price = float(result.get("lastPrice", 0))
+                                high_24h = float(result.get("highPrice24h", 0))
+                                low_24h = float(result.get("lowPrice24h", 0))
+                                volume_24h = float(result.get("turnover24h", 0))
+
+                                clean_key = symbol.replace("-", "/")
+                                threshold = WHALE_THRESHOLDS.get(clean_key, 0)
+
+                                is_whale_detected = (
+                                    MarketAnalytics.evaluate_whale_activity(
+                                        volume_24h, threshold
+                                    )
+                                )
+                                spread_index = (
+                                    MarketAnalytics.calculate_volatility_spread(
+                                        high_24h, low_24h
+                                    )
+                                )
+
+                                payload = {
+                                    "symbol": clean_key,
+                                    "price": price,
+                                    "high": high_24h,
+                                    "low": low_24h,
+                                    "volume": volume_24h,
+                                    "change": float(result.get("price24hPcnt", 0))
+                                    * 100,
+                                    "spread": spread_index,
+                                    "is_whale": is_whale_detected,
+                                    "whale_alert": is_whale_detected,
+                                    "whale_threshold": threshold,
+                                }
+
+                                validated_payload = MarketStreamPayload(**payload)
+                                serialized_data = validated_payload.model_dump()
+
+                                # 1. Update global shared cache
+                                GLOBAL_MARKET_CACHE[symbol] = serialized_data
+
+                                # 2. Broadcast frame directly to the designated client room channel
+                                await manager.broadcast_to_symbol(
+                                    symbol, serialized_data
+                                )
+
+                                TOTAL_PROCESSED_TICKS += 1
+                                polling_retry_handler.reset()
+                        else:
+                            SentinelLogger.error(
+                                f"Oracle Connection Warning: Status {response.status_code}"
+                            )
+                            error_delay = polling_retry_handler.increment_failure()
+                            await asyncio.sleep(error_delay)
+
+                    except httpx.HTTPError as http_err:
+                        SentinelLogger.error(
+                            f"Transport anomaly encountered: {http_err}"
+                        )
+                        error_delay = polling_retry_handler.increment_failure()
+                        await asyncio.sleep(error_delay)
+
+                await asyncio.sleep(STREAM_HEARTBEAT_DELAY)
+    except asyncio.CancelledError:
+        SentinelLogger.info(
+            "Centralized asynchronous market ingestion worker thread cancelled cleanly."
+        )
+    except Exception as general_err:
+        SentinelLogger.error(
+            f"Fatal anomaly inside central background worker: {general_err}"
+        )
 
 
 # --------------------------------------------------------------------
@@ -48,12 +174,21 @@ metrics_limiter = SlidingWindowRateLimiter(window_seconds=60.0, max_requests=10)
 async def lifespan(app: FastAPI):
     """
     Handles application startup and shutdown subroutines uniformly.
-    Executes graceful disconnections for all active clients on termination.
+    Provisions and tears down single central worker loops elegantly.
     """
+    global BACKGROUND_WORKER_TASK
     SentinelLogger.startup("Resilient Telemetry Pipeline Initialized")
+
+    # Fire up the single background worker loop task
+    BACKGROUND_WORKER_TASK = asyncio.create_task(central_ingestion_worker())
+
     yield
 
-    # Graceful Shutdown Sequence: Evict active sockets with standard code 1001 (Going Away)
+    # Graceful Shutdown Sequence: Cancel the background ingestion thread
+    if BACKGROUND_WORKER_TASK:
+        BACKGROUND_WORKER_TASK.cancel()
+        await asyncio.gather(BACKGROUND_WORKER_TASK, return_exceptions=True)
+
     SentinelLogger.info(
         "Initiating graceful teardown. Evicting active WebSocket channels..."
     )
@@ -83,7 +218,7 @@ except ImportError:
 app = FastAPI(
     title="SATS High-Frequency Telemetry Pipeline",
     description="Resilient real-time market data streaming pipeline utilizing stateful full-duplex WebSocket channels",
-    version="4.1",
+    version="4.2",
     lifespan=lifespan,
 )
 
@@ -136,7 +271,6 @@ async def health_check():
 async def health_diagnostics():
     """
     Evaluates real-time upstream network latency thresholds and connectivity bounds.
-    Performs an out-of-band high-resolution measurement to the oracle gateway.
     """
     start_time = time.time()
     try:
@@ -181,7 +315,6 @@ async def get_all_room_metrics():
 async def get_system_telemetry():
     """
     Exposes global infrastructure operational performance statistics.
-    Calculates operational lifespan bounds, network ingestion volume, and channel load.
     """
     uptime_seconds = time.time() - PIPELINE_START_TIME
     return {
@@ -196,9 +329,7 @@ async def get_system_telemetry():
 async def get_stream_metrics(symbol: str, request: Request):
     """
     Exposes real-time client channel allocation metrics for a designated symbol channel.
-    Executes strict validation and handles fixed-window tracking rate-limiting rules.
     """
-    # Adaptive Normalization: Enforce casing invariance early to block string lookup drift
     symbol = symbol.upper()
 
     if not re.match(r"^[A-Z0-9\-]+$", symbol):
@@ -212,7 +343,6 @@ async def get_stream_metrics(symbol: str, request: Request):
 
     client_ip = request.client.host if request.client else "127.0.0.1"
 
-    # Defensive Control: Enforce structured traffic throttling constraints using the sliding window manager
     if metrics_limiter.is_rate_limited(client_ip):
         SentinelLogger.error(
             f"Rate limit threshold breach executed by host address vector: {client_ip}"
@@ -236,13 +366,11 @@ async def websocket_endpoint(
     websocket: WebSocket, symbol: str, token: str = Query(None)
 ):
     """
-    Asynchronous WebSocket stream handler. Performs cross-origin verification,
-    enforces path sanitization, implements socket flood protection, and manages data distribution.
+    Asynchronous WebSocket stream handler. Acts as a lightweight event consumer,
+    subscribing to centralized background worker cache streams.
     """
-    global TOTAL_PROCESSED_TICKS
     global WS_CONCURRENT_TRACKER
 
-    # Adaptive Normalization: Enforce casing invariance early to block string lookup drift
     symbol = symbol.upper()
 
     request_origin = websocket.headers.get("origin")
@@ -278,106 +406,28 @@ async def websocket_endpoint(
 
     WS_CONCURRENT_TRACKER[client_ip] = current_ws_count + 1
 
+    # Connect client socket directly to the centralized multi-room manager mapping tree
     await manager.connect(websocket, symbol)
 
-    api_symbol = symbol.replace("-", "")
-    if "SATS" in api_symbol and "1000" not in api_symbol:
-        api_symbol = f"1000{api_symbol}"
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "application/json",
-    }
-
-    # Instantiating structured connection reuse profiles
-    client_limits = httpx.Limits(
-        max_connections=HTTPX_MAX_CONNECTIONS,
-        max_keepalive_connections=HTTPX_MAX_KEEPALIVE_CONNECTIONS,
-    )
-
-    # Initialize the retry handler instance for this socket subscription session
-    polling_retry_handler = ResilientRetryHandler(base_delay=1.0, max_delay=15.0)
+    # Performance Boost: Push the latest global memory cache snapshot down the pipe instantly on join
+    cached_snapshot = GLOBAL_MARKET_CACHE.get(symbol)
+    if cached_snapshot:
+        try:
+            await websocket.send_json(cached_snapshot)
+        except Exception:
+            manager.disconnect(websocket, symbol)
+            return
 
     try:
-        SentinelLogger.info(f"Polling Data Feed for: {api_symbol}...")
-
-        async with httpx.AsyncClient(
-            timeout=CONNECTION_TIMEOUT_SECONDS,
-            headers=headers,
-            trust_env=True,
-            limits=client_limits,
-        ) as client:
-            while True:
-                try:
-                    response = await client.get(
-                        BYBYIT_API_URL,
-                        params={"category": "spot", "symbol": api_symbol},
-                    )
-
-                    if response.status_code == 200:
-                        data = response.json()
-                        result = data.get("result", {}).get("list", [{}])[0]
-
-                        if result:
-                            price = float(result.get("lastPrice", 0))
-                            high_24h = float(result.get("highPrice24h", 0))
-                            low_24h = float(result.get("lowPrice24h", 0))
-                            volume_24h = float(result.get("turnover24h", 0))
-
-                            clean_key = symbol.replace("-", "/")
-                            threshold = WHALE_THRESHOLDS.get(clean_key, 0)
-
-                            is_whale_detected = MarketAnalytics.evaluate_whale_activity(
-                                volume_24h, threshold
-                            )
-                            spread_index = MarketAnalytics.calculate_volatility_spread(
-                                high_24h, low_24h
-                            )
-
-                            payload = {
-                                "symbol": clean_key,
-                                "price": price,
-                                "high": high_24h,
-                                "low": low_24h,
-                                "volume": volume_24h,
-                                "change": float(result.get("price24hPcnt", 0)) * 100,
-                                "spread": spread_index,
-                                "is_whale": is_whale_detected,
-                                "whale_alert": is_whale_detected,
-                                "whale_threshold": threshold,
-                            }
-
-                            validated_payload = MarketStreamPayload(**payload)
-                            await manager.broadcast_to_symbol(
-                                symbol, validated_payload.model_dump()
-                            )
-                            TOTAL_PROCESSED_TICKS += 1
-                            SentinelLogger.broadcast(clean_key, price)
-
-                            # Reset error loops upon a clean data delivery cycle
-                            polling_retry_handler.reset()
-                    else:
-                        SentinelLogger.error(
-                            f"Oracle Edge API Connection Warning: Status {response.status_code}"
-                        )
-                        error_delay = polling_retry_handler.increment_failure()
-                        await asyncio.sleep(error_delay)
-                        continue
-
-                except httpx.HTTPError as http_err:
-                    SentinelLogger.error(
-                        f"Network transport anomaly encountered during poll: {http_err}"
-                    )
-                    error_delay = polling_retry_handler.increment_failure()
-                    await asyncio.sleep(error_delay)
-                    continue
-
-                await asyncio.sleep(STREAM_HEARTBEAT_DELAY)
+        # Keep the connection open and active while listening exclusively for disconnected states
+        while True:
+            # Sockets stay suspended in memory waiting for centralized background task broadcasts
+            await websocket.receive_text()
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, symbol)
-    except Exception as e:
-        SentinelLogger.error(f"Internal Pipeline Telemetry Exception: {e}")
+    except Exception as socket_err:
+        SentinelLogger.error(f"WebSocket execution exception caught: {socket_err}")
         manager.disconnect(websocket, symbol)
     finally:
         if client_ip in WS_CONCURRENT_TRACKER:
