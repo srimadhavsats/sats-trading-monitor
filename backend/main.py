@@ -34,6 +34,7 @@ from schemas import HealthCheckResponse, MarketStreamPayload
 # Global state counters for system telemetry observability
 PIPELINE_START_TIME = time.time()
 TOTAL_PROCESSED_TICKS = 0
+LAST_INGESTION_TIMESTAMP = 0.0
 
 # Shared Global Memory Cache for data persistence
 GLOBAL_MARKET_CACHE: Dict[str, dict] = {}
@@ -53,9 +54,9 @@ metrics_limiter = SlidingWindowRateLimiter(window_seconds=60.0, max_requests=10)
 async def central_ingestion_worker():
     """
     Decoupled background worker loop that runs for the entire lifetime of the server.
-    Polls whitelisted symbols into a central data cache and distributes frames to rooms.
+    Polls whitelisted symbols into a central data cache and logs precise tick timestamps.
     """
-    global TOTAL_PROCESSED_TICKS
+    global TOTAL_PROCESSED_TICKS, LAST_INGESTION_TIMESTAMP
     SentinelLogger.info(
         "Spawning centralized asynchronous market ingestion worker thread..."
     )
@@ -132,15 +133,14 @@ async def central_ingestion_worker():
                                 validated_payload = MarketStreamPayload(**payload)
                                 serialized_data = validated_payload.model_dump()
 
-                                # 1. Update global shared cache
                                 GLOBAL_MARKET_CACHE[symbol] = serialized_data
-
-                                # 2. Broadcast frame directly to the designated client room channel
                                 await manager.broadcast_to_symbol(
                                     symbol, serialized_data
                                 )
 
                                 TOTAL_PROCESSED_TICKS += 1
+                                # Capture the precise high-resolution timestamp of the incoming data frame
+                                LAST_INGESTION_TIMESTAMP = time.time()
                                 polling_retry_handler.reset()
                         else:
                             SentinelLogger.error(
@@ -172,19 +172,13 @@ async def central_ingestion_worker():
 # --------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Handles application startup and shutdown subroutines uniformly.
-    Provisions and tears down single central worker loops elegantly.
-    """
+    """Handles application startup and shutdown subroutines uniformly."""
     global BACKGROUND_WORKER_TASK
     SentinelLogger.startup("Resilient Telemetry Pipeline Initialized")
 
-    # Fire up the single background worker loop task
     BACKGROUND_WORKER_TASK = asyncio.create_task(central_ingestion_worker())
-
     yield
 
-    # Graceful Shutdown Sequence: Cancel the background ingestion thread
     if BACKGROUND_WORKER_TASK:
         BACKGROUND_WORKER_TASK.cancel()
         await asyncio.gather(BACKGROUND_WORKER_TASK, return_exceptions=True)
@@ -234,9 +228,6 @@ app.add_middleware(
 )
 
 
-# --------------------------------------------------------------------
-# Security Headers Middleware
-# --------------------------------------------------------------------
 @app.middleware("http")
 async def inject_security_headers(request: Request, call_next):
     """Injects high-security HTTP infrastructure headers into every outbound pipeline frame."""
@@ -257,10 +248,7 @@ async def inject_security_headers(request: Request, call_next):
 
 @app.get("/", response_model=HealthCheckResponse)
 async def health_check():
-    """
-    Service Health Check.
-    Verifies container/host connectivity and gateway operational readiness.
-    """
+    """Service Health Check."""
     return {
         "status": "Telemetry Pipeline Active",
         "message": "Data ingestion pipeline is operational and accepting stream connection requests",
@@ -269,10 +257,15 @@ async def health_check():
 
 @app.get("/health/diagnostics")
 async def health_diagnostics():
-    """
-    Evaluates real-time upstream network latency thresholds and connectivity bounds.
-    """
+    """Evaluates real-time upstream network latency thresholds and worker cache staleness bounds."""
     start_time = time.time()
+
+    # Calculate intervals since the last background worker iteration executed
+    if LAST_INGESTION_TIMESTAMP > 0:
+        seconds_since_last_tick = round(time.time() - LAST_INGESTION_TIMESTAMP, 2)
+    else:
+        seconds_since_last_tick = -1.0
+
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(
@@ -280,21 +273,22 @@ async def health_diagnostics():
             )
             latency_ms = (time.time() - start_time) * 1000
 
-            if response.status_code == 200:
-                return {
-                    "status": "Healthy",
-                    "upstream_gateway": "Bybit API v5",
-                    "latency_ms": round(latency_ms, 2),
-                    "connected": True,
-                }
-            else:
-                return {
-                    "status": "Degraded",
-                    "upstream_gateway": "Bybit API v5",
-                    "latency_ms": round(latency_ms, 2),
-                    "connected": False,
-                    "error": f"HTTP Status {response.status_code}",
-                }
+            # Mark state as degraded if the cache hasn't processed a block tick in over 10 seconds
+            is_worker_stalled = seconds_since_last_tick > 10.0
+            status_flag = (
+                "Degraded"
+                if (response.status_code != 200 or is_worker_stalled)
+                else "Healthy"
+            )
+
+            return {
+                "status": status_flag,
+                "upstream_gateway": "Bybit API v5",
+                "latency_ms": round(latency_ms, 2),
+                "connected": response.status_code == 200,
+                "seconds_since_last_tick": seconds_since_last_tick,
+                "cache_synchronized": not is_worker_stalled,
+            }
     except Exception as err:
         return {
             "status": "Unhealthy",
@@ -302,6 +296,8 @@ async def health_diagnostics():
             "latency_ms": round((time.time() - start_time) * 1000, 2),
             "connected": False,
             "error": str(err),
+            "seconds_since_last_tick": seconds_since_last_tick,
+            "cache_synchronized": False,
         }
 
 
@@ -313,9 +309,7 @@ async def get_all_room_metrics():
 
 @app.get("/metrics/system")
 async def get_system_telemetry():
-    """
-    Exposes global infrastructure operational performance statistics.
-    """
+    """Exposes global infrastructure operational performance statistics."""
     uptime_seconds = time.time() - PIPELINE_START_TIME
     return {
         "uptime_seconds": round(uptime_seconds, 2),
@@ -327,9 +321,7 @@ async def get_system_telemetry():
 
 @app.get("/metrics/{symbol}")
 async def get_stream_metrics(symbol: str, request: Request):
-    """
-    Exposes real-time client channel allocation metrics for a designated symbol channel.
-    """
+    """Exposes real-time client channel allocation metrics for a designated symbol channel."""
     symbol = symbol.upper()
 
     if not re.match(r"^[A-Z0-9\-]+$", symbol):
@@ -337,8 +329,7 @@ async def get_stream_metrics(symbol: str, request: Request):
             f"Malformed or non-whitelisted metrics parameter rejected: {symbol}"
         )
         raise HTTPException(
-            status_code=400,
-            detail="Malformed character format inside parameter field",
+            status_code=400, detail="Malformed character format inside parameter field"
         )
 
     client_ip = request.client.host if request.client else "127.0.0.1"
@@ -365,12 +356,8 @@ async def get_stream_metrics(symbol: str, request: Request):
 async def websocket_endpoint(
     websocket: WebSocket, symbol: str, token: str = Query(None)
 ):
-    """
-    Asynchronous WebSocket stream handler. Acts as a lightweight event consumer,
-    subscribing to centralized background worker cache streams.
-    """
+    """Asynchronous WebSocket stream handler linking directly to background worker cache blocks."""
     global WS_CONCURRENT_TRACKER
-
     symbol = symbol.upper()
 
     request_origin = websocket.headers.get("origin")
@@ -405,11 +392,8 @@ async def websocket_endpoint(
         return
 
     WS_CONCURRENT_TRACKER[client_ip] = current_ws_count + 1
-
-    # Connect client socket directly to the centralized multi-room manager mapping tree
     await manager.connect(websocket, symbol)
 
-    # Performance Boost: Push the latest global memory cache snapshot down the pipe instantly on join
     cached_snapshot = GLOBAL_MARKET_CACHE.get(symbol)
     if cached_snapshot:
         try:
@@ -419,9 +403,7 @@ async def websocket_endpoint(
             return
 
     try:
-        # Keep the connection open and active while listening exclusively for disconnected states
         while True:
-            # Sockets stay suspended in memory waiting for centralized background task broadcasts
             await websocket.receive_text()
 
     except WebSocketDisconnect:
