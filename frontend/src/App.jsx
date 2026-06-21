@@ -7,6 +7,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import PriceCard from "./components/PriceCard";
 import NetworkDiagnostics from "./components/NetworkDiagnostics";
 import RoomMetrics from "./components/RoomMetrics";
+import WhaleLedgerLog from "./components/WhaleLedgerLog";
 
 const App = () => {
   return (
@@ -29,6 +30,7 @@ const App = () => {
           <PriceCard />
           <NetworkDiagnostics />
           <RoomMetrics />
+          <WhaleLedgerLog />
         </TelemetryProvider>
       </ErrorBoundary>
     </div>
