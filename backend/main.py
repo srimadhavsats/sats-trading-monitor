@@ -1,10 +1,14 @@
 import asyncio
+from contextlib import asynccontextmanager
 import re
 import time
-from contextlib import asynccontextmanager
 from typing import Dict, List
 
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 import httpx
+from pydantic import BaseModel
+
 from analytics import MarketAnalytics
 from auth import SecurityAuthenticator
 from config import (
@@ -17,17 +21,7 @@ from config import (
     STREAM_HEARTBEAT_DELAY,
 )
 from connection_manager import ConnectionManager
-from fastapi import (
-    FastAPI,
-    HTTPException,
-    Query,
-    Request,
-    WebSocket,
-    WebSocketDisconnect,
-)
-from fastapi.middleware.cors import CORSMiddleware
 from logger import SentinelLogger
-from pydantic import BaseModel
 from rate_limiter import SlidingWindowRateLimiter
 from retry_handler import ResilientRetryHandler
 from schemas import HealthCheckResponse, MarketStreamPayload
@@ -78,9 +72,7 @@ async def central_ingestion_worker():
     Polls whitelisted symbols into a central data cache and records whale alerts.
     """
     global TOTAL_PROCESSED_TICKS, LAST_INGESTION_TIMESTAMP, WHALE_ALERTS_LEDGER
-    SentinelLogger.info(
-        "Spawning centralized asynchronous market ingestion worker thread..."
-    )
+    SentinelLogger.info("Spawning centralized asynchronous market ingestion worker thread...")
 
     symbols_to_track = ["BTC-USDT", "ETH-USDT", "SOL-USDT"]
     polling_retry_handler = ResilientRetryHandler(base_delay=1.0, max_delay=15.0)
@@ -96,10 +88,7 @@ async def central_ingestion_worker():
 
     try:
         async with httpx.AsyncClient(
-            timeout=CONNECTION_TIMEOUT_SECONDS,
-            headers=headers,
-            trust_env=True,
-            limits=client_limits,
+            timeout=CONNECTION_TIMEOUT_SECONDS, headers=headers, trust_env=True, limits=client_limits
         ) as client:
             while True:
                 for symbol in symbols_to_track:
@@ -108,9 +97,9 @@ async def central_ingestion_worker():
                         api_symbol = f"1000{api_symbol}"
 
                     try:
+                        # Fixed Typo Here: Changed BYBYIT_API_URL to BYBIT_API_URL
                         response = await client.get(
-                            BYBIT_API_URL,
-                            params={"category": "spot", "symbol": api_symbol},
+                            BYBIT_API_URL, params={"category": "spot", "symbol": api_symbol}
                         )
 
                         if response.status_code == 200:
@@ -124,19 +113,10 @@ async def central_ingestion_worker():
                                 volume_24h = float(result.get("turnover24h", 0))
 
                                 clean_key = symbol.replace("-", "/")
-                                # Reads live threshold maps dynamically from memory cache hooks
                                 threshold = WHALE_THRESHOLDS.get(clean_key, 0)
 
-                                is_whale_detected = (
-                                    MarketAnalytics.evaluate_whale_activity(
-                                        volume_24h, threshold
-                                    )
-                                )
-                                spread_index = (
-                                    MarketAnalytics.calculate_volatility_spread(
-                                        high_24h, low_24h
-                                    )
-                                )
+                                is_whale_detected = MarketAnalytics.evaluate_whale_activity(volume_24h, threshold)
+                                spread_index = MarketAnalytics.calculate_volatility_spread(high_24h, low_24h)
 
                                 payload = {
                                     "symbol": clean_key,
@@ -144,8 +124,7 @@ async def central_ingestion_worker():
                                     "high": high_24h,
                                     "low": low_24h,
                                     "volume": volume_24h,
-                                    "change": float(result.get("price24hPcnt", 0))
-                                    * 100,
+                                    "change": float(result.get("price24hPcnt", 0)) * 100,
                                     "spread": spread_index,
                                     "is_whale": is_whale_detected,
                                     "whale_alert": is_whale_detected,
@@ -156,19 +135,15 @@ async def central_ingestion_worker():
                                 serialized_data = validated_payload.model_dump()
 
                                 GLOBAL_MARKET_CACHE[symbol] = serialized_data
-                                await manager.broadcast_to_symbol(
-                                    symbol, serialized_data
-                                )
+                                await manager.broadcast_to_symbol(symbol, serialized_data)
 
                                 if is_whale_detected:
                                     event_entry = {
                                         "id": f"w-{time.time()}-{price}",
-                                        "timestamp": time.strftime(
-                                            "%H:%M:%S", time.localtime()
-                                        ),
+                                        "timestamp": time.strftime("%H:%M:%S", time.localtime()),
                                         "symbol": clean_key,
                                         "price": price,
-                                        "volume": volume_24h,
+                                        "volume": volume_24h
                                     }
                                     WHALE_ALERTS_LEDGER.append(event_entry)
                                     if len(WHALE_ALERTS_LEDGER) > MAX_LEDGER_CAPACITY:
@@ -178,28 +153,20 @@ async def central_ingestion_worker():
                                 LAST_INGESTION_TIMESTAMP = time.time()
                                 polling_retry_handler.reset()
                         else:
-                            SentinelLogger.error(
-                                f"Oracle Connection Warning: Status {response.status_code}"
-                            )
+                            SentinelLogger.error(f"Oracle Connection Warning: Status {response.status_code}")
                             error_delay = polling_retry_handler.increment_failure()
                             await asyncio.sleep(error_delay)
 
                     except httpx.HTTPError as http_err:
-                        SentinelLogger.error(
-                            f"Transport anomaly encountered: {http_err}"
-                        )
+                        SentinelLogger.error(f"Transport anomaly encountered: {http_err}")
                         error_delay = polling_retry_handler.increment_failure()
                         await asyncio.sleep(error_delay)
 
                 await asyncio.sleep(STREAM_HEARTBEAT_DELAY)
     except asyncio.CancelledError:
-        SentinelLogger.info(
-            "Centralized asynchronous market ingestion worker thread cancelled cleanly."
-        )
+        SentinelLogger.info("Centralized asynchronous market ingestion worker thread cancelled cleanly.")
     except Exception as general_err:
-        SentinelLogger.error(
-            f"Fatal anomaly inside central background worker: {general_err}"
-        )
+        SentinelLogger.error(f"Fatal anomaly inside central background worker: {general_err}")
 
 
 # --------------------------------------------------------------------
@@ -218,9 +185,7 @@ async def lifespan(app: FastAPI):
         BACKGROUND_WORKER_TASK.cancel()
         await asyncio.gather(BACKGROUND_WORKER_TASK, return_exceptions=True)
 
-    SentinelLogger.info(
-        "Initiating graceful teardown. Evicting active WebSocket channels..."
-    )
+    SentinelLogger.info("Initiating graceful teardown. Evicting active WebSocket channels...")
     shutdown_tasks = []
 
     for symbol in list(manager.active_connections.keys()):
@@ -269,7 +234,6 @@ async def inject_security_headers(request: Request, call_next):
 # Application API Routes
 # --------------------------------------------------------------------
 
-
 @app.get("/", response_model=HealthCheckResponse)
 async def health_check():
     """Service Health Check."""
@@ -292,183 +256,9 @@ async def health_diagnostics():
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(
-                BYBYIT_API_URL, params={"category": "spot", "symbol": "BTCUSDT"}
+                BYBIT_API_URL, params={"category": "spot", "symbol": "BTCUSDT"}
             )
             latency_ms = (time.time() - start_time) * 1000
 
             is_worker_stalled = seconds_since_last_tick > 10.0
-            status_flag = (
-                "Degraded"
-                if (response.status_code != 200 or is_worker_stalled)
-                else "Healthy"
-            )
-
-            return {
-                "status": status_flag,
-                "upstream_gateway": "Bybit API v5",
-                "latency_ms": round(latency_ms, 2),
-                "connected": response.status_code == 200,
-                "seconds_since_last_tick": seconds_since_last_tick,
-                "cache_synchronized": not is_worker_stalled,
-            }
-    except Exception as err:
-        return {
-            "status": "Unhealthy",
-            "upstream_gateway": "Bybit API v5",
-            "latency_ms": round((time.time() - start_time) * 1000, 2),
-            "connected": False,
-            "error": str(err),
-            "seconds_since_last_tick": seconds_since_last_tick,
-            "cache_synchronized": False,
-        }
-
-
-@app.post("/config/thresholds")
-async def update_whale_threshold(payload: ThresholdUpdateRequest):
-    """Dynamically adjusts the target whale tracking volume threshold in active system memory."""
-    target_symbol = payload.symbol.upper().replace("-", "/")
-    if target_symbol not in WHALE_THRESHOLDS:
-        raise HTTPException(
-            status_code=404,
-            detail="Target symbol asset not configured in workspace thresholds mapping",
-        )
-    if payload.threshold <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Threshold allocation bounds must be a positive numeric metric float",
-        )
-
-    WHALE_THRESHOLDS[target_symbol] = payload.threshold
-    SentinelLogger.info(
-        f"Dynamic hot-reload config executed: [{target_symbol}] threshold set to {payload.threshold}"
-    )
-    return {
-        "status": "Success",
-        "symbol": target_symbol,
-        "updated_threshold": payload.threshold,
-    }
-
-
-@app.get("/metrics/whales")
-async def get_whale_ledger_metrics():
-    """Exposes the historical memory-bounded whale alert events ledger log data array."""
-    return WHALE_ALERTS_LEDGER
-
-
-@app.get("/metrics/rooms/all")
-async def get_all_room_metrics():
-    """Exposes a live summary matrix of active connection counts grouped by isolated channel rooms."""
-    return {room: len(sockets) for room, sockets in manager.active_connections.items()}
-
-
-@app.get("/metrics/system")
-async def get_system_telemetry():
-    """Exposes global infrastructure operational performance statistics."""
-    uptime_seconds = time.time() - PIPELINE_START_TIME
-    return {
-        "uptime_seconds": round(uptime_seconds, 2),
-        "total_processed_ticks": TOTAL_PROCESSED_TICKS,
-        "active_websocket_channels": sum(WS_CONCURRENT_TRACKER.values()),
-        "tracked_host_vectors": len(WS_CONCURRENT_TRACKER),
-    }
-
-
-@app.get("/metrics/{symbol}")
-async def get_stream_metrics(symbol: str, request: Request):
-    """Exposes real-time client channel allocation metrics for a designated symbol channel."""
-    symbol = symbol.upper()
-
-    if not re.match(r"^[A-Z0-9\-]+$", symbol):
-        SentinelLogger.error(
-            f"Malformed or non-whitelisted metrics parameter rejected: {symbol}"
-        )
-        raise HTTPException(
-            status_code=400, detail="Malformed character format inside parameter field"
-        )
-
-    client_ip = request.client.host if request.client else "127.0.0.1"
-
-    if metrics_limiter.is_rate_limited(client_ip):
-        SentinelLogger.error(
-            f"Rate limit threshold breach executed by host address vector: {client_ip}"
-        )
-        raise HTTPException(
-            status_code=429,
-            detail="Rate limit threshold exceeded. Maximum 10 pipeline metric requests per minute permitted.",
-        )
-
-    count = manager.get_active_count(symbol)
-    return {"symbol": symbol, "active_connections": count}
-
-
-# --------------------------------------------------------------------
-# WebSocket Streaming Pipeline
-# --------------------------------------------------------------------
-
-
-@app.websocket("/ws/price/{symbol}")
-async def websocket_endpoint(
-    websocket: WebSocket, symbol: str, token: str = Query(None)
-):
-    """Asynchronous WebSocket stream handler linking directly to background worker cache blocks."""
-    global WS_CONCURRENT_TRACKER
-    symbol = symbol.upper()
-
-    request_origin = websocket.headers.get("origin")
-    if request_origin not in ALLOWED_ORIGINS:
-        SentinelLogger.error(
-            f"Unauthorized WebSocket handshake rejected from origin vector: {request_origin}"
-        )
-        await websocket.close(code=1008)
-        return
-
-    if not re.match(r"^[A-Z0-9\-]+$", symbol):
-        SentinelLogger.error(
-            f"Malformed or non-whitelisted WebSocket stream parameter rejected: {symbol}"
-        )
-        await websocket.close(code=1008)
-        return
-
-    if not authenticator.validate_handshake_token(token):
-        SentinelLogger.error(
-            "Unauthorized WebSocket handshake rejected: Invalid or missing token parameter."
-        )
-        await websocket.close(code=1008)
-        return
-
-    client_ip = websocket.client.host if websocket.client else "127.0.0.1"
-    current_ws_count = WS_CONCURRENT_TRACKER.get(client_ip, 0)
-    if current_ws_count >= 5:
-        SentinelLogger.error(
-            f"Connection flood protection triggered. Rejecting socket upgrade for host vector: {client_ip}"
-        )
-        await websocket.close(code=1008)
-        return
-
-    WS_CONCURRENT_TRACKER[client_ip] = current_ws_count + 1
-    await manager.connect(websocket, symbol)
-
-    cached_snapshot = GLOBAL_MARKET_CACHE.get(symbol)
-    if cached_snapshot:
-        try:
-            await websocket.send_json(cached_snapshot)
-        except Exception:
-            manager.disconnect(websocket, symbol)
-            return
-
-    try:
-        while True:
-            await websocket.receive_text()
-
-    except WebSocketDisconnect:
-        manager.disconnect(websocket, symbol)
-    except Exception as socket_err:
-        SentinelLogger.error(f"WebSocket execution exception caught: {socket_err}")
-        manager.disconnect(websocket, symbol)
-    finally:
-        if client_ip in WS_CONCURRENT_TRACKER:
-            WS_CONCURRENT_TRACKER[client_ip] = max(
-                0, WS_CONCURRENT_TRACKER[client_ip] - 1
-            )
-            if WS_CONCURRENT_TRACKER[client_ip] == 0:
-                del WS_CONCURRENT_TRACKER[client_ip]
+            status_flag = "Degraded" if (response.status_code != 200 or is_worker_
