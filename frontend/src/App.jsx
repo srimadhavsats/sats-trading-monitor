@@ -8,6 +8,7 @@ import PriceCard from "./components/PriceCard";
 import NetworkDiagnostics from "./components/NetworkDiagnostics";
 import RoomMetrics from "./components/RoomMetrics";
 import WhaleLedgerLog from "./components/WhaleLedgerLog";
+import ThresholdController from "./components/ThresholdController";
 
 const App = () => {
   return (
@@ -31,6 +32,7 @@ const App = () => {
           <NetworkDiagnostics />
           <RoomMetrics />
           <WhaleLedgerLog />
+          <ThresholdController />
         </TelemetryProvider>
       </ErrorBoundary>
     </div>
