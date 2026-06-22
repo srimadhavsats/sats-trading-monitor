@@ -1,13 +1,14 @@
 # ====================================================================
 # SATS High-Frequency Telemetry Pipeline - Worker Integration Tests
 # ====================================================================
+import main
 from fastapi.testclient import TestClient
 from main import GLOBAL_MARKET_CACHE, app
 
 client = TestClient(app)
 
 
-def test_websocket_instant_cache_delivery():
+def test_websocket_instant_cache_delivery(monkeypatch):
     """Asserts that the WebSocket endpoint instantly pushes the latest cached market snapshot."""
     # Inject a mock dataset directly into the global cache mapping structure
     GLOBAL_MARKET_CACHE["BTC-USDT"] = {
@@ -23,10 +24,20 @@ def test_websocket_instant_cache_delivery():
         "whale_threshold": 5000000.0,
     }
 
-    auth_token = "sats_dev_fallback_secure_token_2026"
-    # Establish a test connection to the full-duplex WebSocket route using the client context
+    # 1. Seamlessly mock token validation check to return True during test execution
+    monkeypatch.setattr(
+        main.authenticator, "validate_handshake_token", lambda token: True
+    )
+
+    # 2. Extract a valid configured origin domain string dynamically
+    valid_origin = (
+        main.ALLOWED_ORIGINS[0] if main.ALLOWED_ORIGINS else "http://localhost:5173"
+    )
+
+    # Establish test connection with appropriate headers to pass network filters cleanly
     with client.websocket_connect(
-        f"/ws/price/BTC-USDT?token={auth_token}"
+        "/ws/price/BTC-USDT?token=mock_test_token",
+        headers={"origin": valid_origin},
     ) as websocket:
         # Receive the immediate frame payload delivery
         data = websocket.receive_json()
