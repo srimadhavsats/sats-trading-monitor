@@ -26,12 +26,12 @@ from rate_limiter import SlidingWindowRateLimiter
 from retry_handler import ResilientRetryHandler
 from schemas import HealthCheckResponse, MarketStreamPayload
 
-# Global state counters for system telemetry observability
+# Global state counters for system telemetry benchmarking
 PIPELINE_START_TIME = time.time()
 TOTAL_PROCESSED_TICKS = 0
 LAST_INGESTION_TIMESTAMP = 0.0
 
-# Memory-Bounded Ring Buffer for Whale Event Tracking
+# Memory-Bounded Ring Buffer for Whale Event Logs
 WHALE_ALERTS_LEDGER: List[dict] = []
 MAX_LEDGER_CAPACITY = 20
 
@@ -41,7 +41,7 @@ GLOBAL_MARKET_CACHE: Dict[str, dict] = {}
 # Background task cancellation reference tracker
 BACKGROUND_WORKER_TASK: getattr(asyncio, "Task", None) = None
 
-# Instantiate core architectural layers
+# Instantiate core architectural processing layers
 manager = ConnectionManager()
 authenticator = SecurityAuthenticator()
 metrics_limiter = SlidingWindowRateLimiter(window_seconds=60.0, max_requests=10)
@@ -68,8 +68,8 @@ class ThresholdUpdateRequest(BaseModel):
 # --------------------------------------------------------------------
 async def central_ingestion_worker():
     """
-    Decoupled background worker loop that runs for the entire lifetime of the server.
-    Polls whitelisted symbols into a central data cache and records whale alerts.
+    Decoupled background worker loop running across the lifecycle of the server engine.
+    Polls whitelisted symbols into a central data cache and records whale events.
     """
     global TOTAL_PROCESSED_TICKS, LAST_INGESTION_TIMESTAMP, WHALE_ALERTS_LEDGER
     SentinelLogger.info("Spawning centralized asynchronous market ingestion worker thread...")
@@ -97,7 +97,6 @@ async def central_ingestion_worker():
                         api_symbol = f"1000{api_symbol}"
 
                     try:
-                        # Fixed Typo Here: Changed BYBYIT_API_URL to BYBIT_API_URL
                         response = await client.get(
                             BYBIT_API_URL, params={"category": "spot", "symbol": api_symbol}
                         )
@@ -127,138 +126,3 @@ async def central_ingestion_worker():
                                     "change": float(result.get("price24hPcnt", 0)) * 100,
                                     "spread": spread_index,
                                     "is_whale": is_whale_detected,
-                                    "whale_alert": is_whale_detected,
-                                    "whale_threshold": threshold,
-                                }
-
-                                validated_payload = MarketStreamPayload(**payload)
-                                serialized_data = validated_payload.model_dump()
-
-                                GLOBAL_MARKET_CACHE[symbol] = serialized_data
-                                await manager.broadcast_to_symbol(symbol, serialized_data)
-
-                                if is_whale_detected:
-                                    event_entry = {
-                                        "id": f"w-{time.time()}-{price}",
-                                        "timestamp": time.strftime("%H:%M:%S", time.localtime()),
-                                        "symbol": clean_key,
-                                        "price": price,
-                                        "volume": volume_24h
-                                    }
-                                    WHALE_ALERTS_LEDGER.append(event_entry)
-                                    if len(WHALE_ALERTS_LEDGER) > MAX_LEDGER_CAPACITY:
-                                        WHALE_ALERTS_LEDGER.pop(0)
-
-                                TOTAL_PROCESSED_TICKS += 1
-                                LAST_INGESTION_TIMESTAMP = time.time()
-                                polling_retry_handler.reset()
-                        else:
-                            SentinelLogger.error(f"Oracle Connection Warning: Status {response.status_code}")
-                            error_delay = polling_retry_handler.increment_failure()
-                            await asyncio.sleep(error_delay)
-
-                    except httpx.HTTPError as http_err:
-                        SentinelLogger.error(f"Transport anomaly encountered: {http_err}")
-                        error_delay = polling_retry_handler.increment_failure()
-                        await asyncio.sleep(error_delay)
-
-                await asyncio.sleep(STREAM_HEARTBEAT_DELAY)
-    except asyncio.CancelledError:
-        SentinelLogger.info("Centralized asynchronous market ingestion worker thread cancelled cleanly.")
-    except Exception as general_err:
-        SentinelLogger.error(f"Fatal anomaly inside central background worker: {general_err}")
-
-
-# --------------------------------------------------------------------
-# Application Lifecycle Context Manager (Lifespan)
-# --------------------------------------------------------------------
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Handles application startup and shutdown subroutines uniformly."""
-    global BACKGROUND_WORKER_TASK
-    SentinelLogger.startup("Resilient Telemetry Pipeline Initialized")
-
-    BACKGROUND_WORKER_TASK = asyncio.create_task(central_ingestion_worker())
-    yield
-
-    if BACKGROUND_WORKER_TASK:
-        BACKGROUND_WORKER_TASK.cancel()
-        await asyncio.gather(BACKGROUND_WORKER_TASK, return_exceptions=True)
-
-    SentinelLogger.info("Initiating graceful teardown. Evicting active WebSocket channels...")
-    shutdown_tasks = []
-
-    for symbol in list(manager.active_connections.keys()):
-        for ws in list(manager.active_connections.get(symbol, [])):
-            try:
-                shutdown_tasks.append(ws.close(code=1001))
-            except Exception:
-                pass
-
-    if shutdown_tasks:
-        await asyncio.gather(*shutdown_tasks, return_exceptions=True)
-
-    SentinelLogger.info("Resilient Telemetry Pipeline Terminated Cleanly")
-
-
-app = FastAPI(
-    title="SATS High-Frequency Telemetry Pipeline",
-    description="Resilient real-time market data streaming pipeline utilizing stateful full-duplex WebSocket channels",
-    version="4.2",
-    lifespan=lifespan,
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.middleware("http")
-async def inject_security_headers(request: Request, call_next):
-    """Injects high-security HTTP infrastructure headers into every outbound pipeline frame."""
-    response = await call_next(request)
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; frame-ancestors 'none';"
-    )
-    return response
-
-
-# --------------------------------------------------------------------
-# Application API Routes
-# --------------------------------------------------------------------
-
-@app.get("/", response_model=HealthCheckResponse)
-async def health_check():
-    """Service Health Check."""
-    return {
-        "status": "Telemetry Pipeline Active",
-        "message": "Data ingestion pipeline is operational and accepting stream connection requests",
-    }
-
-
-@app.get("/health/diagnostics")
-async def health_diagnostics():
-    """Evaluates real-time upstream network latency thresholds and worker cache staleness bounds."""
-    start_time = time.time()
-
-    if LAST_INGESTION_TIMESTAMP > 0:
-        seconds_since_last_tick = round(time.time() - LAST_INGESTION_TIMESTAMP, 2)
-    else:
-        seconds_since_last_tick = -1.0
-
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(
-                BYBIT_API_URL, params={"category": "spot", "symbol": "BTCUSDT"}
-            )
-            latency_ms = (time.time() - start_time) * 1000
-
-            is_worker_stalled = seconds_since_last_tick > 10.0
-            status_flag = "Degraded" if (response.status_code != 200 or is_worker_
