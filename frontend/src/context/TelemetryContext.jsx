@@ -1,125 +1,104 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+} from "react";
 import { CONFIG } from "../config";
-import { storage } from "../utils/storage";
 
 const TelemetryContext = createContext(null);
 
 export const TelemetryProvider = ({ children }) => {
-  const [selectedSymbol, setSelectedSymbol] = useState(() =>
-    storage.get("selected_symbol", "BTC-USDT"),
-  );
   const [data, setData] = useState(null);
-  const [connected, setConnected] = useState(false);
-  const [history, setHistory] = useState([]);
-  const [sessionHigh, setSessionHigh] = useState(null);
-  const [sessionLow, setSessionLow] = useState(null);
-  const [lastUpdated, setLastUpdated] = useState(null);
+  // Track system connectivity status maps explicitly
+  const [status, setStatus] = useState("connecting"); // connecting | connected | disconnected
+  const [symbol, setSymbol] = useState("BTC-USDT");
 
-  const maxTicks = CONFIG.MAX_CHART_TICKS || 30;
+  const socketRef = useRef(null);
+  const reconnectAttemptsRef = useRef(0);
+  const maxReconnectDelay = 16000; // Limit backoff delays to 16 seconds max
+  const baseReconnectDelay = 1000;
+
+  const connectWebSocket = useCallback(() => {
+    if (socketRef.current) {
+      socketRef.current.close();
+    }
+
+    setStatus("connecting");
+    const token =
+      CONFIG.HANDSHAKE_TOKEN || "sats_dev_fallback_secure_token_2026";
+    const wsUrl = `${CONFIG.BACKEND_WS_URL}/price/${symbol}?token=${token}`;
+
+    const ws = new WebSocket(wsUrl);
+    socketRef.current = ws;
+
+    ws.onopen = () => {
+      console.log(`── 🔌 TELEMETRY VECTOR CONNECTED: [${symbol}] ──`);
+      setStatus("connected");
+      reconnectAttemptsRef.current = 0; // Reset backoff counters on clean handshake
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        setData(payload);
+      } catch (err) {
+        console.error("❌ Malformed data payload frame rejected:", err);
+      }
+    };
+
+    ws.onclose = (e) => {
+      socketRef.current = null;
+      if (e.code === 1001 || e.code === 1008) {
+        // Explicit administrative terminal closures should block retries
+        setStatus("disconnected");
+        return;
+      }
+
+      setStatus("connecting");
+      // Calculate Backoff: delay = baseDelay * 2^attempts
+      const delay = Math.min(
+        maxReconnectDelay,
+        baseReconnectDelay * Math.pow(2, reconnectAttemptsRef.current),
+      );
+
+      console.warn(
+        `⚠️ Transport closed. Initiating exponential backoff retry in ${delay}ms (Attempt ${reconnectAttemptsRef.current + 1})`,
+      );
+      reconnectAttemptsRef.current += 1;
+
+      setTimeout(() => {
+        connectWebSocket();
+      }, delay);
+    };
+
+    ws.onerror = (error) => {
+      console.error(
+        "❌ Pipeline circuit socket interface error caught:",
+        error,
+      );
+      ws.close();
+    };
+  }, [symbol]);
 
   useEffect(() => {
-    let socket = null;
-    let reconnectTimer = null;
-    let isMounted = true;
-    let connectionAttempts = 0;
-
-    const connect = () => {
-      if (!isMounted) return;
-
-      const authToken = "sats_dev_fallback_secure_token_2026";
-      // Construct routing link dynamically while ensuring exact formatting rules apply
-      const wsUrl = `${CONFIG.BACKEND_WS_URL}/ws/price/${selectedSymbol}?token=${authToken}`;
-      socket = new WebSocket(wsUrl);
-
-      socket.onopen = () => {
-        if (isMounted) {
-          setConnected(true);
-          connectionAttempts = 0;
-          console.log(
-            `[Context] Context Telemetry Connected: ${selectedSymbol}`,
-          );
-        }
-      };
-
-      socket.onmessage = (event) => {
-        if (!isMounted || document.hidden) return;
-
-        try {
-          const incomingData = JSON.parse(event.data);
-          if (!incomingData || !incomingData.price) return;
-
-          const currentPrice = incomingData.price;
-
-          setSessionHigh((prev) =>
-            prev === null || currentPrice > prev ? currentPrice : prev,
-          );
-          setSessionLow((prev) =>
-            prev === null || currentPrice < prev ? currentPrice : prev,
-          );
-
-          setData(incomingData);
-          setHistory((prev) => [...prev, currentPrice].slice(-maxTicks));
-          setLastUpdated(new Date());
-        } catch (err) {
-          console.error("[Context] Stream frame parse anomaly:", err);
-        }
-      };
-
-      socket.onclose = () => {
-        if (!isMounted) return;
-        setConnected(false);
-
-        const baselineDelay = CONFIG.HEARTBEAT_RECONNECT_MS || 3000;
-        const calculatedBackoff =
-          baselineDelay * Math.pow(2, connectionAttempts);
-        const finalReconnectDelay = Math.min(30000, calculatedBackoff);
-
-        console.warn(
-          `[Context] Reconnecting stream in ${finalReconnectDelay}ms`,
-        );
-        connectionAttempts++;
-        reconnectTimer = setTimeout(connect, finalReconnectDelay);
-      };
-
-      socket.onerror = () => {
-        if (socket) socket.close();
-      };
-    };
-
-    connect();
-
+    connectWebSocket();
     return () => {
-      isMounted = false;
-      if (socket) {
-        socket.onclose = null;
-        socket.close();
+      if (socketRef.current) {
+        // Standard normal closure code on clean layout unmounts
+        socketRef.current.close(1000);
       }
-      if (reconnectTimer) clearTimeout(reconnectTimer);
     };
-  }, [selectedSymbol, maxTicks]);
+  }, [connectWebSocket]);
 
-  const changeSymbol = (newSym) => {
-    setSelectedSymbol(newSym);
-    storage.set("selected_symbol", newSym);
-    setHistory([]);
-    setData(null);
-    setSessionHigh(null);
-    setSessionLow(null);
-    setLastUpdated(null);
-  };
+  // Expose network circuit metrics safely down the react view tree
+  const connected = status === "connected";
 
   return (
     <TelemetryContext.Provider
-      value={{
-        selectedSymbol,
-        data,
-        connected,
-        history,
-        sessionHigh,
-        sessionLow,
-        lastUpdated,
-        changeSymbol,
-      }}
+      value={{ data, connected, status, symbol, setSymbol }}
     >
       {children}
     </TelemetryContext.Provider>
