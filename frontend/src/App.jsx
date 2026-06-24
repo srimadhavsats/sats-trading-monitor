@@ -9,6 +9,7 @@ import NetworkDiagnostics from "./components/NetworkDiagnostics";
 import RoomMetrics from "./components/RoomMetrics";
 import WhaleLedgerLog from "./components/WhaleLedgerLog";
 import ThresholdController from "./components/ThresholdController";
+import ConnectionBanner from "./components/ConnectionBanner";
 
 const App = () => {
   return (
@@ -27,7 +28,10 @@ const App = () => {
             </p>
           </div>
 
-          {/* 3. Stream-Dependent Interactive Display Components */}
+          {/* 3. Stream Recovery Alerts Banner Element */}
+          <ConnectionBanner />
+
+          {/* 4. Stream-Dependent Interactive Display Components */}
           <PriceCard />
           <NetworkDiagnostics />
           <RoomMetrics />
