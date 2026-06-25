@@ -5,6 +5,7 @@ import { TelemetryProvider } from "./context/TelemetryContext";
 import ErrorBoundary from "./components/ErrorBoundary";
 // Import downstream telemetry data consumers
 import PriceCard from "./components/PriceCard";
+import PriceSparkline from "./components/PriceSparkline";
 import NetworkDiagnostics from "./components/NetworkDiagnostics";
 import RoomMetrics from "./components/RoomMetrics";
 import WhaleLedgerLog from "./components/WhaleLedgerLog";
@@ -32,7 +33,11 @@ const App = () => {
           <ConnectionBanner />
 
           {/* 4. Stream-Dependent Interactive Display Components */}
-          <PriceCard />
+          <div className="w-96 flex flex-col gap-3">
+            <PriceCard />
+            <PriceSparkline />
+          </div>
+
           <NetworkDiagnostics />
           <RoomMetrics />
           <WhaleLedgerLog />
