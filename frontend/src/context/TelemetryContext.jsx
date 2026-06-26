@@ -14,7 +14,6 @@ export const TelemetryProvider = ({ children }) => {
   const [data, setData] = useState(null);
   const [status, setStatus] = useState("connecting"); // connecting | connected | disconnected
   const [symbol, setSymbol] = useState("BTC-USDT");
-  // Dedicated sliding window array for high-performance chart tracking
   const [priceHistory, setPriceHistory] = useState([]);
 
   const socketRef = useRef(null);
@@ -31,6 +30,7 @@ export const TelemetryProvider = ({ children }) => {
     const token =
       CONFIG.HANDSHAKE_TOKEN || "sats_dev_fallback_secure_token_2026";
 
+    // Sanitize and guarantee the correct /ws prefix format path securely
     const baseWsUrl = CONFIG.BACKEND_WS_URL.endsWith("/ws")
       ? CONFIG.BACKEND_WS_URL
       : `${CONFIG.BACKEND_WS_URL}/ws`;
@@ -51,14 +51,12 @@ export const TelemetryProvider = ({ children }) => {
         const payload = JSON.parse(event.data);
         setData(payload);
 
-        // Append new price framework frames into the memory-bounded ring array
         if (payload && typeof payload.price === "number") {
           setPriceHistory((prev) => {
             const nextHistory = [
               ...prev,
               { price: payload.price, time: Date.now() },
             ];
-            // Strictly cap sliding array size to 30 nodes to eliminate memory leaks
             if (nextHistory.length > 30) {
               nextHistory.shift();
             }
@@ -101,7 +99,6 @@ export const TelemetryProvider = ({ children }) => {
   }, [symbol]);
 
   useEffect(() => {
-    // Evict and clear historical records cleanly on asset channel room hops
     setPriceHistory([]);
     connectWebSocket();
 
