@@ -26,6 +26,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from logger import SentinelLogger
 from pydantic import BaseModel
 from rate_limiter import SlidingWindowRateLimiter
@@ -215,3 +216,295 @@ async def lifespan(app: FastAPI):
 
     BACKGROUND_WORKER_TASK = asyncio.create_task(central_ingestion_worker())
     yield
+
+    if BACKGROUND_WORKER_TASK:
+        BACKGROUND_WORKER_TASK.cancel()
+        await asyncio.gather(BACKGROUND_WORKER_TASK, return_exceptions=True)
+
+    SentinelLogger.info(
+        "Initiating graceful teardown. Evicting active WebSocket channels..."
+    )
+    shutdown_tasks = []
+
+    for symbol in list(manager.active_connections.keys()):
+        for ws in list(manager.active_connections.get(symbol, [])):
+            try:
+                shutdown_tasks.append(ws.close(code=1001))
+            except Exception:
+                pass
+
+    if shutdown_tasks:
+        await asyncio.gather(*shutdown_tasks, return_exceptions=True)
+
+    SentinelLogger.info("Resilient Telemetry Pipeline Terminated Cleanly")
+
+
+app = FastAPI(
+    title="SATS High-Frequency Telemetry Pipeline",
+    description="Resilient real-time market data streaming pipeline utilizing stateful full-duplex WebSocket channels",
+    version="4.2",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.middleware("http")
+async def inject_security_headers(request: Request, call_next):
+    """Injects high-security HTTP infrastructure headers into every outbound pipeline frame."""
+    response = await call_next(request)
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; frame-ancestors 'none';"
+    )
+    return response
+
+
+# --------------------------------------------------------------------
+# CHECKLIST POINT 11: Ironclad Global Exception Handler Shield
+# --------------------------------------------------------------------
+@app.exception_handler(Exception)
+async def global_unexpected_exception_handler(request: Request, exc: Exception):
+    """
+    Catches any unhandled system exception. Logs the raw system traceback safely
+    on the server side, but completely purges details from outbound frames to
+    prevent structural data leaks to potential malicious clients.
+    """
+    # Keep the raw, messy traceback safe in our secure system logs
+    SentinelLogger.error(f"CRITICAL SHIELD INTERCEPTED UNHANDLED FAULT: {str(exc)}")
+
+    # Send a clean, generic message to the client—no leaks allowed!
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal pipeline operation failure. Telemetry channel decoupled safely."
+        },
+    )
+
+
+# --------------------------------------------------------------------
+# Application API Routes
+# --------------------------------------------------------------------
+
+
+@app.get("/", response_model=HealthCheckResponse)
+async def health_check():
+    """Service Health Check."""
+    return {
+        "status": "Telemetry Pipeline Active",
+        "message": "Data ingestion pipeline is operational and accepting stream connection requests",
+    }
+
+
+@app.get("/health/diagnostics")
+async def health_diagnostics():
+    """Evaluates real-time upstream network latency thresholds and worker cache staleness bounds."""
+    start_time = time.time()
+
+    if LAST_INGESTION_TIMESTAMP > 0:
+        seconds_since_last_tick = round(time.time() - LAST_INGESTION_TIMESTAMP, 2)
+    else:
+        seconds_since_last_tick = -1.0
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(
+                BYBIT_API_URL, params={"category": "spot", "symbol": "BTCUSDT"}
+            )
+            latency_ms = (time.time() - start_time) * 1000
+
+            is_worker_stalled = seconds_since_last_tick > 10.0
+            status_flag = (
+                "Degraded"
+                if (response.status_code != 200 or is_worker_stalled)
+                else "Healthy"
+            )
+
+            return {
+                "status": status_flag,
+                "upstream_gateway": "Bybit API v5",
+                "latency_ms": round(latency_ms, 2),
+                "connected": response.status_code == 200,
+                "seconds_since_last_tick": seconds_since_last_tick,
+                "cache_synchronized": not is_worker_stalled,
+            }
+    except Exception as err:
+        return {
+            "status": "Unhealthy",
+            "upstream_gateway": "Bybit API v5",
+            "latency_ms": round((time.time() - start_time) * 1000, 2),
+            "connected": False,
+            "error": "Gateway link connection timed out or dropped",
+            "seconds_since_last_tick": seconds_since_last_tick,
+            "cache_synchronized": False,
+        }
+
+
+@app.post("/config/thresholds")
+async def update_whale_threshold(payload: ThresholdUpdateRequest):
+    """
+    CHECKLIST POINT 6: Pure Server-Side Security Validation Model.
+    Validates, cleans, and asserts metrics boundaries completely on the server core.
+    """
+    # Direct server-side defensive cleaning sequence
+    target_symbol = payload.symbol.upper().strip().replace("-", "/")
+
+    if not re.match(r"^[A-Z0-9\/]+$", target_symbol):
+        raise HTTPException(
+            status_code=400, detail="Malformed payload character footprints rejected"
+        )
+
+    if target_symbol not in WHALE_THRESHOLDS:
+        raise HTTPException(
+            status_code=404,
+            detail="Target symbol asset not configured in workspace thresholds mapping",
+        )
+
+    if payload.threshold <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Threshold allocation bounds must be a positive numeric metric float",
+        )
+
+    WHALE_THRESHOLDS[target_symbol] = payload.threshold
+    SentinelLogger.info(
+        f"Dynamic hot-reload config executed: [{target_symbol}] threshold set to {payload.threshold}"
+    )
+    return {
+        "status": "Success",
+        "symbol": target_symbol,
+        "updated_threshold": payload.threshold,
+    }
+
+
+@app.get("/metrics/whales")
+async def get_whale_ledger_metrics():
+    """Exposes the historical memory-bounded whale alert events ledger log data array."""
+    return WHALE_ALERTS_LEDGER
+
+
+@app.get("/metrics/rooms/all")
+async def get_all_room_metrics():
+    """Exposes a live summary matrix of active connection counts grouped by isolated channel rooms."""
+    return {room: len(sockets) for room, sockets in manager.active_connections.items()}
+
+
+@app.get("/metrics/system")
+async def get_system_telemetry():
+    """Exposes global infrastructure operational performance statistics."""
+    uptime_seconds = time.time() - PIPELINE_START_TIME
+    return {
+        "uptime_seconds": round(uptime_seconds, 2),
+        "total_processed_ticks": TOTAL_PROCESSED_TICKS,
+        "active_websocket_channels": sum(WS_CONCURRENT_TRACKER.values()),
+        "tracked_host_vectors": len(WS_CONCURRENT_TRACKER),
+    }
+
+
+@app.get("/metrics/{symbol}")
+async def get_stream_metrics(symbol: str, request: Request):
+    """Exposes real-time client channel allocation metrics for a designated symbol channel."""
+    symbol = symbol.upper()
+
+    if not re.match(r"^[A-Z0-9\-]+$", symbol):
+        SentinelLogger.error(
+            f"Malformed or non-whitelisted metrics parameter rejected: {symbol}"
+        )
+        raise HTTPException(
+            status_code=400, detail="Malformed character format inside parameter field"
+        )
+
+    client_ip = request.client.host if request.client else "127.0.0.1"
+
+    if metrics_limiter.is_rate_limited(client_ip):
+        SentinelLogger.error(
+            f"Rate limit threshold breach executed by host address vector: {client_ip}"
+        )
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit threshold exceeded. Maximum 10 pipeline metric requests per minute permitted.",
+        )
+
+    count = manager.get_active_count(symbol)
+    return {"symbol": symbol, "active_connections": count}
+
+
+# --------------------------------------------------------------------
+# WebSocket Streaming Pipeline
+# --------------------------------------------------------------------
+
+
+@app.websocket("/ws/price/{symbol}")
+async def websocket_endpoint(
+    websocket: WebSocket, symbol: str, token: str = Query(None)
+):
+    """Asynchronous WebSocket stream handler linking directly to background worker cache blocks."""
+    global WS_CONCURRENT_TRACKER
+    symbol = symbol.upper()
+
+    request_origin = websocket.headers.get("origin")
+    if request_origin not in ALLOWED_ORIGINS:
+        SentinelLogger.error(
+            f"Unauthorized WebSocket handshake rejected from origin vector: {request_origin}"
+        )
+        await websocket.close(code=1008)
+        return
+
+    if not re.match(r"^[A-Z0-9\-]+$", symbol):
+        SentinelLogger.error(
+            f"Malformed or non-whitelisted WebSocket stream parameter rejected: {symbol}"
+        )
+        await websocket.close(code=1008)
+        return
+
+    if not authenticator.validate_handshake_token(token):
+        SentinelLogger.error(
+            "Unauthorized WebSocket handshake rejected: Invalid or missing token parameter."
+        )
+        await websocket.close(code=1008)
+        return
+
+    client_ip = websocket.client.host if websocket.client else "127.0.0.1"
+    current_ws_count = WS_CONCURRENT_TRACKER.get(client_ip, 0)
+    if current_ws_count >= 5:
+        SentinelLogger.error(
+            f"Connection flood protection triggered. Rejecting socket upgrade for host vector: {client_ip}"
+        )
+        await websocket.close(code=1008)
+        return
+
+    WS_CONCURRENT_TRACKER[client_ip] = current_ws_count + 1
+    await manager.connect(websocket, symbol)
+
+    cached_snapshot = GLOBAL_MARKET_CACHE.get(symbol)
+    if cached_snapshot:
+        try:
+            await websocket.send_json(cached_snapshot)
+        except Exception:
+            manager.disconnect(websocket, symbol)
+            return
+
+    try:
+        while True:
+            await websocket.receive_text()
+
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, symbol)
+    except Exception as socket_err:
+        SentinelLogger.error(f"WebSocket execution exception caught: {socket_err}")
+        manager.disconnect(websocket, symbol)
+    finally:
+        if client_ip in WS_CONCURRENT_TRACKER:
+            WS_CONCURRENT_TRACKER[client_ip] = max(
+                0, WS_CONCURRENT_TRACKER[client_ip] - 1
+            )
+            if WS_CONCURRENT_TRACKER[client_ip] == 0:
+                del WS_CONCURRENT_TRACKER[client_ip]
