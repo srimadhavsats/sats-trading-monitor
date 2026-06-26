@@ -12,6 +12,16 @@ const ThresholdController = () => {
     setStatusMsg("");
     setIsError(false);
 
+    // Client-side validation is UX. Not security,
+    // Catch obvious errors early to save network bandwidth and guide the user.
+    if (!threshold || threshold <= 0) {
+      setIsError(true);
+      setStatusMsg(
+        "UX Input Check: Volume allocation must be a positive number.",
+      );
+      return;
+    }
+
     try {
       const baseUrl =
         CONFIG.BACKEND_URL ||
@@ -27,10 +37,18 @@ const ThresholdController = () => {
         }),
       });
 
-      const data = await response.json();
+      // Defensive Parsing Check: Handle scenarios where the response isn't structured JSON
+      let data = {};
+      const contentType = response.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        data = await response.json();
+      }
 
       if (!response.ok) {
-        throw new Error(data.detail || "Configuration transmission error");
+        // Digest generic error structures gracefully without leaking internals
+        throw new Error(
+          data.detail || `Gateway Error Status Code: ${response.status}`,
+        );
       }
 
       setIsError(false);
@@ -39,7 +57,8 @@ const ThresholdController = () => {
       );
     } catch (err) {
       setIsError(true);
-      setStatusMsg(err.message || "Failed to inject hot-reload config");
+      // Fallback display logic guarantees the raw traceback string never blows up the user's browser
+      setStatusMsg(err.message || "Pipeline interaction failed unexpectedly.");
     }
   };
 
@@ -50,7 +69,7 @@ const ThresholdController = () => {
           Dynamic Parameter Matrix
         </h4>
         <p className="text-[7px] text-neutral-600 uppercase font-bold tracking-wider">
-          Inject runtime overrides into live memory states without downcycles
+          Hardened runtime override console with backend fallback parsing
         </p>
       </div>
 
@@ -58,7 +77,6 @@ const ThresholdController = () => {
         onSubmit={handleApplyThreshold}
         className="flex flex-col gap-3 text-[10px]"
       >
-        {/* Row 1: Asset Target Selector */}
         <div className="flex flex-col gap-1">
           <label className="text-[7px] font-black text-neutral-500 uppercase tracking-wider">
             Target Node Selector
@@ -74,7 +92,6 @@ const ThresholdController = () => {
           </select>
         </div>
 
-        {/* Row 2: Threshold Allocation Field */}
         <div className="flex flex-col gap-1">
           <label className="text-[7px] font-black text-neutral-500 uppercase tracking-wider">
             Whale Volume Cap ($)
@@ -88,7 +105,6 @@ const ThresholdController = () => {
           />
         </div>
 
-        {/* Trigger Execution Block */}
         <button
           type="submit"
           className="w-full py-2 bg-neutral-950 hover:bg-neutral-900 border border-neutral-800 hover:border-neutral-700 active:scale-[0.98] transition-all text-neutral-300 font-black uppercase tracking-widest rounded-lg text-[8px]"
@@ -97,7 +113,6 @@ const ThresholdController = () => {
         </button>
       </form>
 
-      {/* Dynamic System Output Logs */}
       {statusMsg && (
         <div
           className={`mt-1 p-2 border text-[8px] font-bold uppercase tracking-wide rounded-md text-center ${
