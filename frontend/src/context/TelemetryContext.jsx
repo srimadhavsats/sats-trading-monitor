@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+} from "react";
 import { CONFIG } from "../config";
 
 const TelemetryContext = createContext(null);
@@ -21,8 +28,14 @@ export const TelemetryProvider = ({ children }) => {
     }
 
     setStatus("connecting");
-    const token = CONFIG.HANDSHAKE_TOKEN || "sats_dev_fallback_secure_token_2026";
-    const wsUrl = `${CONFIG.BACKEND_WS_URL}/price/${symbol}?token=${token}`;
+    const token =
+      CONFIG.HANDSHAKE_TOKEN || "sats_dev_fallback_secure_token_2026";
+
+    const baseWsUrl = CONFIG.BACKEND_WS_URL.endsWith("/ws")
+      ? CONFIG.BACKEND_WS_URL
+      : `${CONFIG.BACKEND_WS_URL}/ws`;
+
+    const wsUrl = `${baseWsUrl}/price/${symbol}?token=${token}`;
 
     const ws = new WebSocket(wsUrl);
     socketRef.current = ws;
@@ -41,7 +54,10 @@ export const TelemetryProvider = ({ children }) => {
         // Append new price framework frames into the memory-bounded ring array
         if (payload && typeof payload.price === "number") {
           setPriceHistory((prev) => {
-            const nextHistory = [...prev, { price: payload.price, time: Date.now() }];
+            const nextHistory = [
+              ...prev,
+              { price: payload.price, time: Date.now() },
+            ];
             // Strictly cap sliding array size to 30 nodes to eliminate memory leaks
             if (nextHistory.length > 30) {
               nextHistory.shift();
@@ -64,7 +80,7 @@ export const TelemetryProvider = ({ children }) => {
       setStatus("connecting");
       const delay = Math.min(
         maxReconnectDelay,
-        baseReconnectDelay * Math.pow(2, reconnectAttemptsRef.current)
+        baseReconnectDelay * Math.pow(2, reconnectAttemptsRef.current),
       );
 
       console.warn(`⚠️ Transport closed. Reconnecting in ${delay}ms`);
@@ -76,7 +92,10 @@ export const TelemetryProvider = ({ children }) => {
     };
 
     ws.onerror = (error) => {
-      console.error("❌ Pipeline circuit socket interface error caught:", error);
+      console.error(
+        "❌ Pipeline circuit socket interface error caught:",
+        error,
+      );
       ws.close();
     };
   }, [symbol]);
@@ -96,7 +115,9 @@ export const TelemetryProvider = ({ children }) => {
   const connected = status === "connected";
 
   return (
-    <TelemetryContext.Provider value={{ data, connected, status, symbol, setSymbol, priceHistory }}>
+    <TelemetryContext.Provider
+      value={{ data, connected, status, symbol, setSymbol, priceHistory }}
+    >
       {children}
     </TelemetryContext.Provider>
   );
@@ -105,8 +126,9 @@ export const TelemetryProvider = ({ children }) => {
 export const useTelemetry = () => {
   const context = useContext(TelemetryContext);
   if (!context) {
-    throw new Error("useTelemetry must be executed internal to a TelemetryProvider structural boundary");
+    throw new Error(
+      "useTelemetry must be executed internal to a TelemetryProvider structural boundary",
+    );
   }
   return context;
 };
-  
