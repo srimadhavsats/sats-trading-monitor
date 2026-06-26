@@ -68,7 +68,7 @@ except ImportError:
 WHALE_THRESHOLDS = dict(WHALE_THRESHOLDS)
 
 
-class ThresholdUpdateRequest(BaseModel):
+class ThresholdUpdateRequestRequest(BaseModel):
     symbol: str
     threshold: float
 
@@ -257,8 +257,24 @@ app.add_middleware(
 
 @app.middleware("http")
 async def inject_security_headers(request: Request, call_next):
-    """Injects high-security HTTP infrastructure headers into every outbound pipeline frame."""
-    response = await call_next(request)
+    """
+    Injects high-security HTTP infrastructure headers into every outbound pipeline frame.
+    Defensively captures inner Starlette task leakage leaks to maintain zero data leaks.
+    """
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        # Wrap leaks bubbling up out of Starlette's call_next router threads
+        SentinelLogger.error(
+            f"CRITICAL SHIELD INTERCEPTED UNHANDLED FAULT IN MIDDLEWARE: {str(exc)}"
+        )
+        response = JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Internal pipeline operation failure. Telemetry channel decoupled safely."
+            },
+        )
+
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-XSS-Protection"] = "1; mode=block"
@@ -269,19 +285,15 @@ async def inject_security_headers(request: Request, call_next):
 
 
 # --------------------------------------------------------------------
-# CHECKLIST POINT 11: Ironclad Global Exception Handler Shield
+# CHECKLIST POINT 11: Global Exception Handler Shield
 # --------------------------------------------------------------------
 @app.exception_handler(Exception)
 async def global_unexpected_exception_handler(request: Request, exc: Exception):
     """
-    Catches any unhandled system exception. Logs the raw system traceback safely
-    on the server side, but completely purges details from outbound frames to
-    prevent structural data leaks to potential malicious clients.
+    Catches unexpected endpoint runtime faults, obscure structural tracking trace leaks
+    from escaping onto wire networks.
     """
-    # Keep the raw, messy traceback safe in our secure system logs
     SentinelLogger.error(f"CRITICAL SHIELD INTERCEPTED UNHANDLED FAULT: {str(exc)}")
-
-    # Send a clean, generic message to the client—no leaks allowed!
     return JSONResponse(
         status_code=500,
         content={
@@ -349,12 +361,11 @@ async def health_diagnostics():
 
 
 @app.post("/config/thresholds")
-async def update_whale_threshold(payload: ThresholdUpdateRequest):
+async def update_whale_threshold(payload: ThresholdUpdateRequestRequest):
     """
     CHECKLIST POINT 6: Pure Server-Side Security Validation Model.
     Validates, cleans, and asserts metrics boundaries completely on the server core.
     """
-    # Direct server-side defensive cleaning sequence
     target_symbol = payload.symbol.upper().strip().replace("-", "/")
 
     if not re.match(r"^[A-Z0-9\/]+$", target_symbol):
