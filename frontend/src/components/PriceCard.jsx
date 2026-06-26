@@ -1,232 +1,81 @@
 import React from "react";
-// Import the abstracted unified data connection hook
 import { useTelemetry } from "../context/TelemetryContext";
-// Import centralized config and theme mappings
-import { CONFIG } from "../config";
-import { THEME } from "../theme";
-// Import centralized telemetry formatting utilities
-import {
-  formatMarketPrice,
-  formatCompactVolume,
-  formatPriceChange,
-  formatSpread,
-} from "../utils/formatters";
-
-const lineCommand = (point, i, a) => {
-  const [x, y] = point;
-  if (i === 0) return `M ${x},${y}`;
-  const [px, py] = a[i - 1];
-  const cpx1 = px + (x - px) * 0.5;
-  const cpy1 = py;
-  const cpx2 = x - (x - px) * 0.5;
-  const cpy2 = y;
-  return `C ${cpx1},${cpy1} ${cpx2},${cpy2} ${x},${y}`;
-};
 
 const PriceCard = () => {
-  // Ingest stream updates dynamically from the shared telemetry context channel
-  const {
-    selectedSymbol,
-    data,
-    connected,
-    history,
-    sessionHigh,
-    sessionLow,
-    changeSymbol,
-  } = useTelemetry();
+  const { data, status } = useTelemetry();
 
-  const maxTicks = CONFIG.MAX_CHART_TICKS || 30;
-
+  // Guard Clause: Handle initial buffering states when data hasn't hit the wire yet
   if (!data) {
     return (
-      <div className="p-6 border border-neutral-800 rounded-2xl bg-neutral-900/40 w-96 animate-pulse flex flex-col justify-center items-center h-80">
-        <p className="text-neutral-500 font-mono text-[10px] uppercase tracking-widest text-center">
-          {connected
-            ? "Receiving Data Feed..."
-            : "Establishing Telemetry Link..."}
-        </p>
+      <div className="w-96 p-6 border border-neutral-800 bg-neutral-950 font-mono rounded-2xl flex flex-col items-center justify-center gap-2 select-none">
+        <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+        <span className="text-[9px] font-black uppercase text-neutral-500 tracking-widest">
+          Synchronizing Ingestion Stream...
+        </span>
       </div>
     );
   }
 
-  const currentHistory =
-    history.length > 0 ? history : [data.price, data.price];
-  const minPrice = Math.min(...currentHistory);
-  const maxPrice = Math.max(...currentHistory);
-  const priceRange = (maxPrice - minPrice) * 1.4 || 1;
-  const chartMin = minPrice - priceRange * 0.2;
-  const prevPrice =
-    history.length > 1 ? history[history.length - 2] : data.price;
+  // Safe Extraction using defensive fallback metrics
+  const symbol = data.symbol || "UNKNOWN/PAIR";
+  const price = typeof data.price === "number" ? data.price : 0;
+  const change = typeof data.change === "number" ? data.change : 0;
+  const volume = typeof data.volume === "number" ? data.volume : 0;
 
-  const isClimbing = data.price > prevPrice;
-  const isDropping = data.price < prevPrice;
-  const velocityColor = isClimbing
-    ? THEME.velocity.bullish
-    : isDropping
-      ? THEME.velocity.bearish
-      : THEME.velocity.neutral;
-
-  const getPlotY = (price) => 128 - ((price - chartMin) / priceRange) * 128;
-  const points = currentHistory.map((p, i) => [
-    (i / (maxTicks - 1)) * 384,
-    getPlotY(p),
-  ]);
-  const dAttr = points.map((point, i, a) => lineCommand(point, i, a)).join(" ");
+  const isBullish = change >= 0;
 
   return (
-    <div className="p-6 border rounded-2xl bg-neutral-900/95 backdrop-blur-2xl w-96 relative border-neutral-800">
-      <div className="absolute left-6 top-6 flex gap-2 z-50">
-        {CONFIG.TRACKED_SYMBOLS.map((sym) => (
-          <button
-            key={sym}
-            onClick={() => changeSymbol(sym)}
-            className={`text-[8px] font-black px-2 py-1 rounded border transition-all ${selectedSymbol === sym ? "bg-neutral-100 text-black border-neutral-100" : "bg-transparent text-neutral-500 border-neutral-800 hover:border-neutral-600"}`}
-          >
-            {sym.split("-")[0]}
-          </button>
-        ))}
+    <div className="w-96 p-5 border border-neutral-800 bg-neutral-900/50 backdrop-blur-xl font-mono rounded-2xl flex flex-col gap-3 select-none">
+      {/* Top Meta Row */}
+      <div className="flex items-center justify-between border-b border-neutral-800/60 pb-2">
+        <span className="text-[11px] font-black text-neutral-200 uppercase tracking-wider">
+          {symbol}
+        </span>
+        <span
+          className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+            status === "connected"
+              ? "bg-emerald-950/40 text-emerald-400 border border-emerald-900/30"
+              : "bg-neutral-950 text-neutral-500"
+          }`}
+        >
+          {status}
+        </span>
       </div>
 
-      <div className="relative z-30 mb-4">
-        <div className="flex justify-between items-center mb-1">
-          <h3 className="text-neutral-500 text-[9px] font-black uppercase tracking-[0.3em] pl-24">
-            {data.symbol || selectedSymbol}
-          </h3>
-          <div
-            className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase flex items-center gap-1 ${connected ? THEME.status.online : THEME.status.offline}`}
-          >
-            <span className={connected ? "animate-pulse" : ""}>●</span>
-            {connected ? "Live" : "Offline"}
-          </div>
+      {/* Main Core Price Display */}
+      <div className="flex flex-col gap-0.5">
+        <div className="text-2xl font-black text-neutral-100 tracking-tight tabular-nums">
+          $
+          {price.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 4,
+          })}
         </div>
+        <div
+          className={`text-[9px] font-bold uppercase tracking-wider ${isBullish ? "text-emerald-400" : "text-rose-400"}`}
+        >
+          {isBullish ? "▲" : "▼"} {change.toFixed(2)}%{" "}
+          <span className="text-neutral-600 font-medium">/ 24h</span>
+        </div>
+      </div>
 
-        <div className="flex items-baseline gap-3">
-          <h2
-            className="text-5xl font-black tabular-nums tracking-tighter italic"
-            style={{ color: velocityColor }}
-          >
-            ${formatMarketPrice(data.price)}
-          </h2>
-          <span
-            className={`text-[10px] font-mono font-black px-1.5 py-0.5 rounded-[4px] ${data.change > 0 ? "bg-emerald-950/80 text-emerald-400 border border-emerald-800/50" : data.change < 0 ? "bg-rose-950/80 text-rose-400 border border-rose-800/50" : "bg-neutral-950/80 text-neutral-400 border border-neutral-800/50"}`}
-          >
-            {formatPriceChange(data.change)}
+      {/* Underbelly Meta Grid */}
+      <div className="grid grid-cols-2 gap-2 border-t border-neutral-800/40 pt-2 text-[9px]">
+        <div className="flex flex-col">
+          <span className="text-[7px] text-neutral-500 font-black uppercase tracking-wider">
+            Rolling Turnover
+          </span>
+          <span className="font-bold text-neutral-300 tabular-nums">
+            ${volume.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </span>
         </div>
-
-        <div className="flex gap-3 mt-2 pl-0.5 items-center">
-          <div className="flex items-center gap-1">
-            <span className="text-[7px] font-black text-neutral-600 uppercase tracking-wider">
-              High
-            </span>
-            <span className="text-[10px] font-mono font-bold text-neutral-400">
-              ${sessionHigh ? formatMarketPrice(sessionHigh) : "--.--"}
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[7px] font-black text-neutral-600 uppercase tracking-wider">
-              Low
-            </span>
-            <span className="text-[10px] font-mono font-bold text-neutral-400">
-              ${sessionLow ? formatMarketPrice(sessionLow) : "--.--"}
-            </span>
-          </div>
-          <div className="flex items-center gap-1 border-l border-neutral-800/80 pl-2.5">
-            <span className="text-[7px] font-black text-neutral-600 uppercase tracking-wider">
-              24H Spread
-            </span>
-            <span className="text-[10px] font-mono font-bold text-neutral-300">
-              {formatSpread(data.spread)}
-            </span>
-          </div>
-        </div>
-
-        {data.is_whale && (
-          <div className="mt-3 px-2 py-1 bg-neutral-950 border border-neutral-800 rounded flex justify-between items-center animate-pulse">
-            <span className="text-[7px] font-black tracking-widest text-neutral-400 uppercase">
-              Alert: Volume Threshold Breach
-            </span>
-            <span className="text-[8px] font-mono font-bold text-neutral-500">
-              Target Reached
-            </span>
-          </div>
-        )}
-      </div>
-
-      <div className="relative h-32 w-full bg-black/60 rounded-xl border border-neutral-800/40 overflow-hidden mb-5">
-        <div className="absolute right-2.5 top-2 text-[7px] font-mono font-black text-neutral-700 select-none z-40 pointer-events-none uppercase tracking-wider">
-          Ceiling: ${formatMarketPrice(maxPrice)}
-        </div>
-        <div className="absolute right-2.5 bottom-2 text-[7px] font-mono font-black text-neutral-700 select-none z-40 pointer-events-none uppercase tracking-wider">
-          Floor: ${formatMarketPrice(minPrice)}
-        </div>
-
-        <svg
-          className="absolute inset-0 w-full h-full"
-          viewBox="0 0 384 128"
-          preserveAspectRatio="none"
-        >
-          <line
-            x1="0"
-            y1="32"
-            x2="384"
-            y2="32"
-            stroke="#171717"
-            strokeWidth="1"
-            strokeDasharray="3 3"
-          />
-          <line
-            x1="0"
-            y1="64"
-            x2="384"
-            y2="64"
-            stroke="#171717"
-            strokeWidth="1"
-            strokeDasharray="3 3"
-          />
-          <line
-            x1="0"
-            y1="96"
-            x2="384"
-            y2="96"
-            stroke="#171717"
-            strokeWidth="1"
-            strokeDasharray="3 3"
-          />
-
-          <path
-            d={`${dAttr} L 384,128 L 0,128 Z`}
-            fill={velocityColor}
-            fillOpacity={THEME.chart.fillOpacity}
-            className="transition-all duration-1000"
-          />
-          <path
-            d={dAttr}
-            fill="none"
-            stroke={velocityColor}
-            strokeWidth={THEME.chart.strokeWidth}
-            className="transition-all duration-1000"
-          />
-        </svg>
-      </div>
-
-      <div className="flex justify-between items-end border-t border-neutral-800 pt-4">
-        <div className="flex flex-col gap-1">
-          <p className="text-neutral-600 text-[8px] font-black uppercase tracking-widest">
-            Data Pipeline
-          </p>
-          <p className="text-[11px] font-mono font-black text-neutral-300">
-            Singapore / Bybit
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-1 text-right">
-          <p className="text-neutral-600 text-[8px] font-black uppercase tracking-widest">
-            24H Turnover
-          </p>
-          <p className="text-[11px] font-mono font-black text-neutral-200">
-            {formatCompactVolume(data.volume)}
-          </p>
+        <div className="flex flex-col items-end">
+          <span className="text-[7px] text-neutral-500 font-black uppercase tracking-wider">
+            Engine Vector
+          </span>
+          <span className="font-bold text-neutral-400 uppercase tracking-widest">
+            Oracle Node
+          </span>
         </div>
       </div>
     </div>
