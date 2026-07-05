@@ -12,3 +12,5 @@ granian>=1.2.0
 
 # Testing and Regression Verification Utilities
 pytest>=8.0.0
+
+uvicorn
