@@ -6,6 +6,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 // Import downstream telemetry data consumers
 import PriceCard from "./components/PriceCard";
 import PriceSparkline from "./components/PriceSparkline";
+import SymbolSelector from "./components/SymbolSelector";
 import NetworkDiagnostics from "./components/NetworkDiagnostics";
 import RoomMetrics from "./components/RoomMetrics";
 import WhaleLedgerLog from "./components/WhaleLedgerLog";
@@ -32,8 +33,9 @@ const App = () => {
           {/* 3. Stream Recovery Alerts Banner Element */}
           <ConnectionBanner />
 
-          {/* 4. Stream-Dependent Interactive Display Components */}
+          {/* 4. Stream-Dependent Control & Display Stack */}
           <div className="w-96 flex flex-col gap-3">
+            <SymbolSelector />
             <PriceCard />
             <PriceSparkline />
           </div>
