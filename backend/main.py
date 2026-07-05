@@ -246,9 +246,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Explicitly authorized web origins to bypass cross-domain security filters
+production_origins = [
+    "https://sats-trading-monitor.vercel.app",  # Aapka hosted frontend URL
+    "http://localhost:5173",  # Local development fallbacks
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=production_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
