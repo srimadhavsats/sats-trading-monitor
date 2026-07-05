@@ -502,8 +502,14 @@ async def websocket_endpoint(
         await websocket.close(code=1008)
         return
 
-    client_ip = websocket.client.host if websocket.client else "127.0.0.1"
-    current_ws_count = WS_CONCURRENT_TRACKER.get(client_ip, 0)
+        # Extract the true client IP address from behind cloud reverse proxies/load balancers
+        forwarded_for = websocket.headers.get("x-forwarded-for")
+        if forwarded_for:
+            client_ip = forwarded_for.split(",")[0].strip()
+        else:
+            client_ip = websocket.client.host if websocket.client else "127.0.0.1"
+
+        current_ws_count = WS_CONCURRENT_TRACKER.get(client_ip, 0)
     if current_ws_count >= 5:
         SentinelLogger.error(
             f"Connection flood protection triggered. Rejecting socket upgrade for host vector: {client_ip}"
