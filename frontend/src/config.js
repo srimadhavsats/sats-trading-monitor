@@ -1,18 +1,8 @@
-/**
- * SATS Sentinel v4.1 - Frontend Configuration Matrix
- * Centralized constant definitions for client application parameters.
- */
-
 export const CONFIG = {
-  // Network gateway string for active websocket communication channels
-  BACKEND_WS_URL: "ws://127.0.0.1:8000",
-
-  // Data boundary limiting the number of tracking ticks cached for chart plotting
-  MAX_CHART_TICKS: 20,
-
-  // Reconnection fallback threshold interval expressed in milliseconds
-  HEARTBEAT_RECONNECT_MS: 3000,
-
-  // Centralized collection of active token pair identifier channels
-  TRACKED_SYMBOLS: ["BTC-USDT", "ETH-USDT"],
+  // Agar platform par environment variable set hai toh wo uthaega, nahi toh localhost fallback
+  BACKEND_URL: import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000",
+  BACKEND_WS_URL: import.meta.env.VITE_BACKEND_WS_URL || "ws://127.0.0.1:8000",
+  HANDSHAKE_TOKEN:
+    import.meta.env.VITE_HANDSHAKE_TOKEN ||
+    "sats_dev_fallback_secure_token_2026",
 };
