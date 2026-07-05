@@ -470,7 +470,7 @@ async def websocket_endpoint(
     symbol = symbol.upper()
 
     request_origin = websocket.headers.get("origin")
-    if request_origin not in ALLOWED_ORIGINS:
+    if request_origin not in production_origins:
         SentinelLogger.error(
             f"Unauthorized WebSocket handshake rejected from origin vector: {request_origin}"
         )
