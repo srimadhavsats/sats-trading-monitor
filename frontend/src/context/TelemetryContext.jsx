@@ -69,23 +69,38 @@ export const TelemetryProvider = ({ children }) => {
     };
 
     ws.onclose = (e) => {
-      socketRef.current = null;
-      if (e.code === 1001 || e.code === 1008) {
-        setStatus("disconnected");
+      console.log(`── 🔌 SOCKET CLOSED WITH CODE: ${e.code} ──`);
+
+      // Clean connection tracking ref safely if this closed socket is still the active one
+      if (socketRef.current === ws) {
+        socketRef.current = null;
+      }
+
+      // 🛡️ SAFEGUARD FILTER: Intentional closure (1000) hone par reconnect skip karein
+      if (e.code === 1000 || e.code === 1001 || e.code === 1008) {
+        if (e.code !== 1000) {
+          setStatus("disconnected");
+        }
         return;
       }
 
+      // Only execute reconnection scripts if transport dropped unexpectedly
       setStatus("connecting");
       const delay = Math.min(
         maxReconnectDelay,
         baseReconnectDelay * Math.pow(2, reconnectAttemptsRef.current),
       );
 
-      console.warn(`⚠️ Transport closed. Reconnecting in ${delay}ms`);
+      console.warn(
+        `⚠️ Transport closed unexpectedly. Reconnecting in ${delay}ms`,
+      );
       reconnectAttemptsRef.current += 1;
 
       setTimeout(() => {
-        connectWebSocket();
+        // Double check that the user hasn't shifted rooms before executing retry block
+        if (wsUrl.includes(symbol)) {
+          connectWebSocket();
+        }
       }, delay);
     };
 
@@ -104,7 +119,7 @@ export const TelemetryProvider = ({ children }) => {
 
     return () => {
       if (socketRef.current) {
-        socketRef.current.close(1000);
+        socketRef.current.close(1000); // Trigger clean intentional disconnect signal
       }
     };
   }, [symbol, connectWebSocket]);
