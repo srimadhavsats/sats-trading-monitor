@@ -1,45 +1,64 @@
 # ====================================================================
-# SATS Sentinel v4.1 - API Data Schemas & Validation Models
+# SATS Sentinel - API Data Schemas & Validation Models
 # ====================================================================
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class HealthCheckResponse(BaseModel):
     """Formal data contract for system gateway health diagnostics."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "status": "Sentinel v4.2 Active",
+                "message": "Oracle engine is operational and ready for stream requests",
+            }
+        }
+    )
 
     status: str = Field(..., description="The operational state of the Sentinel engine")
     message: str = Field(
         ..., description="Detailed availability status of the streaming data oracle"
     )
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "status": "Sentinel v4.1 Active",
-                "message": "Oracle engine is operational and ready for stream requests",
-            }
-        }
-
 
 class ErrorResponse(BaseModel):
     """Standardized error contract for consistent API exception handling."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "error": "Upstream Gateway Error",
+                "details": "The remote exchange mirror connection timed out after 10.0 seconds.",
+            }
+        }
+    )
 
     error: str = Field(..., description="The error classification code or status title")
     details: str = Field(
         ..., description="Human-readable exception details and debugging context"
     )
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "error": "Upstream Gateway Error",
-                "details": "The remote exchange mirror connection timed out after 10.0 seconds.",
-            }
-        }
-
 
 class MarketStreamPayload(BaseModel):
     """Formal architectural schema contract for high-frequency live price ticks."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "symbol": "BTC/USDT",
+                "price": 68250.50,
+                "high": 69100.00,
+                "low": 67400.25,
+                "volume": 125040032.12,
+                "change": 1.25,
+                "spread": 2.52,
+                "is_whale": False,
+                "whale_alert": False,
+                "whale_threshold": 500000.0,
+            }
+        }
+    )
 
     symbol: str = Field(
         ..., description="The unified trading pair identifier (e.g., BTC/USDT)"
@@ -66,19 +85,3 @@ class MarketStreamPayload(BaseModel):
     whale_threshold: float = Field(
         ..., description="The calibrated boundary limit marking a whale deviation"
     )
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "symbol": "BTC/USDT",
-                "price": 68250.50,
-                "high": 69100.00,
-                "low": 67400.25,
-                "volume": 125040032.12,
-                "change": 1.25,
-                "spread": 2.52,
-                "is_whale": False,
-                "whale_alert": False,
-                "whale_threshold": 500000.0,
-            }
-        }

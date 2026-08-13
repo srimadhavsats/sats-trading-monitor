@@ -1,121 +1,149 @@
-import React, { useState, useEffect } from "react";
-// Ingest the live full-duplex connection channel context hook
-import { useTelemetry } from "../context/TelemetryContext";
+import { useState, useEffect } from "react";
+import { useTelemetry } from "../context/useTelemetry";
 import { CONFIG } from "../config";
 
 const NetworkDiagnostics = () => {
-  // Pull the current socket pipeline state directly from the global stream context
   const { connected: wsConnected } = useTelemetry();
-
   const [metrics, setMetrics] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [systemTelemetry, setSystemTelemetry] = useState(null);
 
   useEffect(() => {
-    const fetchDiagnostics = async () => {
+    let isMounted = true;
+
+    const fetchAllDiagnostics = async () => {
       try {
-        const baseUrl =
-          CONFIG.BACKEND_URL ||
-          CONFIG.BACKEND_WS_URL.replace("ws://", "http://").replace("/ws", "");
-        const response = await fetch(`${baseUrl}/health/diagnostics`);
-        const data = await response.json();
-        setMetrics(data);
-      } catch (err) {
-        console.error("❌ Failed to pull cross-layer diagnostics:", err);
-        setMetrics({
-          status: "Offline",
-          latency_ms: 0,
-          connected: false,
-          seconds_since_last_tick: -1.0,
-          cache_synchronized: false,
-          error: "Gateway Unreachable",
-        });
-      } finally {
-        setLoading(false);
+        const baseUrl = CONFIG.BACKEND_URL.endsWith("/")
+          ? CONFIG.BACKEND_URL.slice(0, -1)
+          : CONFIG.BACKEND_URL;
+
+        const [diagRes, sysRes] = await Promise.all([
+          fetch(`${baseUrl}/health/diagnostics`),
+          fetch(`${baseUrl}/metrics/system`),
+        ]);
+
+        if (diagRes.ok) {
+          const diagData = await diagRes.json();
+          if (isMounted) setMetrics(diagData);
+        }
+
+        if (sysRes.ok) {
+          const sysData = await sysRes.json();
+          if (isMounted) setSystemTelemetry(sysData);
+        }
+      } catch {
+        if (isMounted) {
+          setMetrics({
+            status: "Degraded",
+            latency_ms: 0,
+            connected: false,
+            seconds_since_last_tick: -1.0,
+            cache_synchronized: false,
+            upstream_gateway: "Bybit API v5",
+          });
+        }
       }
     };
 
-    fetchDiagnostics();
-    const pollInterval = setInterval(fetchDiagnostics, 5000);
+    fetchAllDiagnostics();
+    const interval = setInterval(fetchAllDiagnostics, 4000);
 
-    return () => clearInterval(pollInterval);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
-  if (loading) {
-    return (
-      <div className="p-4 border border-neutral-800 rounded-xl bg-neutral-900/40 w-96 animate-pulse h-20 flex items-center justify-between">
-        <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600 font-mono">
-          Mapping Circuit Heartbeats...
-        </span>
-      </div>
-    );
-  }
-
   const isHealthy = metrics?.status === "Healthy" && wsConnected;
-  const isDegraded =
-    metrics?.status === "Degraded" ||
-    (!metrics?.cache_synchronized && metrics?.seconds_since_last_tick > 0);
+  const isDegraded = !isHealthy && (metrics?.connected || wsConnected);
 
-  const statusColor = isHealthy
-    ? "text-emerald-400 bg-emerald-950/40 border-emerald-800/40"
+  const statusBadge = isHealthy
+    ? { text: "NOMINAL", color: "bg-emerald-950/60 text-emerald-400 border-emerald-800/50" }
     : isDegraded
-      ? "text-amber-400 bg-amber-950/40 border-amber-800/40"
-      : "text-rose-400 bg-rose-950/40 border-rose-800/40";
+    ? { text: "DEGRADED", color: "bg-amber-950/60 text-amber-400 border-amber-800/50" }
+    : { text: "FAULT", color: "bg-rose-950/60 text-rose-400 border-rose-800/50" };
+
+  const formatUptime = (seconds) => {
+    if (!seconds) return "--";
+    const mins = Math.floor(seconds / 60);
+    const hrs = Math.floor(mins / 60);
+    if (hrs > 0) return `${hrs}h ${mins % 60}m`;
+    return `${mins}m ${Math.floor(seconds % 60)}s`;
+  };
 
   return (
-    <div className="p-5 border rounded-2xl bg-neutral-900/95 backdrop-blur-2xl w-96 border-neutral-800 flex flex-col gap-3 font-mono">
-      {/* Upper Segment: Node Header and Master Status Badge */}
-      <div className="flex items-center justify-between border-b border-neutral-800/60 pb-2">
+    <div className="w-full p-5 rounded-2xl terminal-card font-mono flex flex-col gap-3 select-none">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-[#1a2333] pb-3">
         <div className="flex flex-col gap-0.5">
-          <span className="text-[7px] font-black text-neutral-500 uppercase tracking-widest">
-            Infrastructure Core ({metrics?.upstream_gateway || "Oracle Gateway"}
-            )
+          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+            Infrastructure & Circuit Observability
           </span>
-          <span className="text-[11px] font-bold text-neutral-300">
-            Cross-Layer Circuit Observability
+          <span className="text-xs font-black text-slate-200">
+            {metrics?.upstream_gateway || "Bybit API v5 Oracle"}
           </span>
         </div>
+
         <div
-          className={`px-2 py-0.5 rounded border text-[8px] font-black uppercase tracking-wider ${statusColor}`}
+          className={`px-2.5 py-0.5 rounded-lg border text-[10px] font-black uppercase tracking-wider ${statusBadge.color}`}
         >
-          {isHealthy ? "Nominal" : isDegraded ? "Degraded" : "Fault"}
+          {statusBadge.text}
         </div>
       </div>
 
-      {/* Lower Segment: Split Status Matrix Grid */}
-      <div className="grid grid-cols-3 gap-2 text-center text-[9px]">
-        {/* Metric 1: HTTP API Gateway Round Trip Latency */}
-        <div className="p-2 border border-neutral-800 bg-neutral-950 rounded-xl flex flex-col gap-0.5">
-          <span className="text-[6px] font-black text-neutral-600 uppercase tracking-wider">
-            API RTT
+      {/* Observability Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+        {/* Metric 1: Oracle Latency */}
+        <div className="p-3 rounded-xl bg-[#090d16] border border-[#1a2333] flex flex-col gap-1">
+          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+            API RTT Latency
           </span>
-          <span className="font-bold text-neutral-300">
-            {metrics?.latency_ms > 0 ? `${metrics.latency_ms}ms` : "---"}
+          <span className="font-extrabold text-slate-200 tabular-nums">
+            {metrics?.latency_ms > 0 ? `${metrics.latency_ms} ms` : "---"}
           </span>
         </div>
 
-        {/* Metric 2: Full-Duplex Local Socket Status */}
-        <div className="p-2 border border-neutral-800 bg-neutral-950 rounded-xl flex flex-col gap-0.5">
-          <span className="text-[6px] font-black text-neutral-600 uppercase tracking-wider">
-            WS Socket
+        {/* Metric 2: WebSocket State */}
+        <div className="p-3 rounded-xl bg-[#090d16] border border-[#1a2333] flex flex-col gap-1">
+          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+            Full-Duplex WS
           </span>
           <span
-            className={`font-bold ${wsConnected ? "text-emerald-400" : "text-rose-400"}`}
+            className={`font-extrabold flex items-center gap-1.5 ${
+              wsConnected ? "text-emerald-400" : "text-rose-400"
+            }`}
           >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                wsConnected ? "bg-emerald-400" : "bg-rose-500"
+              }`}
+            />
             {wsConnected ? "Active" : "Closed"}
           </span>
         </div>
 
-        {/* Metric 3: Background Worker Thread Cache Delta */}
-        <div className="p-2 border border-neutral-800 bg-neutral-950 rounded-xl flex flex-col gap-0.5">
-          <span className="text-[6px] font-black text-neutral-600 uppercase tracking-wider">
-            Cache Delta
+        {/* Metric 3: Cache Freshness */}
+        <div className="p-3 rounded-xl bg-[#090d16] border border-[#1a2333] flex flex-col gap-1">
+          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+            Tick Freshness
           </span>
           <span
-            className={`font-bold ${metrics?.cache_synchronized ? "text-emerald-400" : "text-amber-400"}`}
+            className={`font-extrabold tabular-nums ${
+              metrics?.cache_synchronized ? "text-emerald-400" : "text-amber-400"
+            }`}
           >
             {metrics?.seconds_since_last_tick >= 0
-              ? `${metrics.seconds_since_last_tick}s`
+              ? `${metrics.seconds_since_last_tick}s ago`
               : "No Tick"}
+          </span>
+        </div>
+
+        {/* Metric 4: System Uptime */}
+        <div className="p-3 rounded-xl bg-[#090d16] border border-[#1a2333] flex flex-col gap-1">
+          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+            Engine Uptime
+          </span>
+          <span className="font-extrabold text-slate-300 tabular-nums">
+            {systemTelemetry ? formatUptime(systemTelemetry.uptime_seconds) : "--"}
           </span>
         </div>
       </div>

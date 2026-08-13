@@ -1,35 +1,35 @@
-import React from "react";
-import { useTelemetry } from "../context/TelemetryContext";
+import { useTelemetry } from "../context/useTelemetry";
 
 const ConnectionBanner = () => {
-  const { status } = useTelemetry();
+  const { status, symbol } = useTelemetry();
 
-  // Keep the workspace totally clean when the socket pipeline is operating nominally
   if (status === "connected") return null;
 
   const isConnecting = status === "connecting";
 
   return (
     <div
-      className={`w-full max-w-4xl p-3 border font-mono text-[10px] flex items-center justify-between rounded-xl mb-4 transition-all animate-pulse select-none ${
+      className={`w-full p-3.5 border font-mono text-xs flex items-center justify-between rounded-xl transition-all select-none ${
         isConnecting
-          ? "bg-amber-950/40 text-amber-400 border-amber-900/40"
-          : "bg-rose-950/40 text-rose-400 border-rose-900/40"
+          ? "bg-amber-950/40 text-amber-300 border-amber-800/60 animate-pulse"
+          : "bg-rose-950/40 text-rose-300 border-rose-800/60"
       }`}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2.5">
         <span
-          className={`w-2 h-2 rounded-full ${isConnecting ? "bg-amber-500" : "bg-rose-500"}`}
+          className={`w-2.5 h-2.5 rounded-full ${
+            isConnecting ? "bg-amber-400" : "bg-rose-500"
+          }`}
         />
-        <span className="font-bold uppercase tracking-wider">
+        <span className="font-bold">
           {isConnecting
-            ? "Network Circuit Interrupted ── Attempting Automated Recovery Pipeline"
-            : "Data Link Terminated ── Critical Handshake Failure Fault"}
+            ? `Pipeline socket disconnected ── Synchronizing stream handshake for [${symbol}]...`
+            : "Transport connection fault ── Server link timed out."}
         </span>
       </div>
 
-      <div className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 bg-neutral-950 border border-neutral-800/80 rounded-md">
-        {isConnecting ? "Retrying" : "Fault"}
+      <div className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 bg-[#090d16] border border-slate-700/80 rounded-lg">
+        {isConnecting ? "Auto-Reconnecting" : "Offline"}
       </div>
     </div>
   );

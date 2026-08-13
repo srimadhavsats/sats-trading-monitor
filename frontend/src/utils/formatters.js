@@ -1,15 +1,27 @@
 /**
- * SATS Sentinel v4.1 - Telemetry Formatting Utilities
- * Centralized data normalization and localization helper layers.
+ * SATS Sentinel - Telemetry Formatting Utilities
+ * Centralized data normalization and localization helper functions.
  */
 
 /**
- * Formats a raw numeric asset price into a localized, comma-separated string.
+ * Formats a raw numeric asset price into a clean localized string with dynamic precision.
  * @param {number} price - The raw float value from the oracle feed.
  * @returns {string} Fully localized display value.
  */
 export const formatMarketPrice = (price) => {
-  return (price || 0).toLocaleString(undefined, {
+  if (price === undefined || price === null || isNaN(price)) return "0.00";
+  
+  if (price === 0) return "0.00";
+  
+  if (price < 0.001) {
+    return price.toFixed(6);
+  } else if (price < 1) {
+    return price.toFixed(4);
+  } else if (price < 10) {
+    return price.toFixed(3);
+  }
+  
+  return price.toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -18,18 +30,17 @@ export const formatMarketPrice = (price) => {
 /**
  * Formats a raw price change percentage into a human-readable ticker metric.
  * Automatically appends explicit positive symbols and rounds decimal boundaries.
- * @param {number} change - The raw percentage change value (e.g., 1.45 or -2.3).
+ * @param {number} change - The raw percentage change value.
  * @returns {string} Formatted performance string (e.g., "+1.45%" or "-2.30%").
  */
 export const formatPriceChange = (change) => {
-  if (change === undefined || change === null) return "0.00%";
-  const formatted = change.toFixed(2);
-  return change > 0 ? `+${formatted}%` : `${formatted}%`;
+  if (change === undefined || change === null || isNaN(change)) return "0.00%";
+  const formatted = Math.abs(change).toFixed(2);
+  return change >= 0 ? `+${formatted}%` : `-${formatted}%`;
 };
 
 /**
- * Formats a date object or timestamp into a highly readable, execution-style time string.
- * Perfect for high-frequency order books, transaction telemetry, or live alert systems.
+ * Formats a date object or timestamp into an execution-style time string.
  * @param {Date|string|number} dateInput - Raw time variable.
  * @returns {string} Formatted localized time (e.g., "23:37:32").
  */
@@ -45,13 +56,12 @@ export const formatTimestamp = (dateInput) => {
 };
 
 /**
- * Formats large financial figures (e.g., turnover/volume) into a compact localized string.
- * Automatically converts raw values into human-readable notation (e.g., $125.04M, $450.20K).
+ * Formats large financial figures (turnover/volume) into compact notation ($125.04M, $450.20K).
  * @param {number} volume - The raw volume float value from the stream oracle.
  * @returns {string} Compact formatted financial notation string.
  */
 export const formatCompactVolume = (volume) => {
-  if (!volume) return "$0.00";
+  if (!volume || isNaN(volume)) return "$0.00";
   return new Intl.NumberFormat(undefined, {
     notation: "compact",
     compactDisplay: "short",
@@ -66,6 +76,6 @@ export const formatCompactVolume = (volume) => {
  * @returns {string} Clean formatted percentage string.
  */
 export const formatSpread = (spread) => {
-  if (spread === undefined || spread === null) return "0.00%";
+  if (spread === undefined || spread === null || isNaN(spread)) return "0.00%";
   return `${spread.toFixed(2)}%`;
 };

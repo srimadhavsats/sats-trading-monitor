@@ -16,7 +16,7 @@ class SentinelLogger:
     def _emit(level: str, message: str, extra: dict = None) -> None:
         """Assembles the core metrics tracking structure and outputs the JSON string."""
         log_record = {
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "level": level.upper(),
             "message": message,
             "subsystem": "telemetry_pipeline",

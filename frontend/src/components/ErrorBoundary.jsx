@@ -1,4 +1,4 @@
-import React, { Component } from "react";
+import { Component } from "react";
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -7,39 +7,35 @@ class ErrorBoundary extends Component {
   }
 
   static getDerivedStateFromError(error) {
-    // Update state so the next render will show the fallback UI.
     return { hasError: true, error };
   }
 
   componentDidCatch(error, errorInfo) {
-    // Route technical crash telemetry directly into the browser console context
-    console.error("── 💥 CRITICAL INTERFACE RENDERING PANIC ──");
-    console.error("Exception Vector:", error);
-    console.error("Component Stack Info:", errorInfo);
+    console.error("[ErrorBoundary] Component panic caught:", error, errorInfo);
   }
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="p-6 border border-rose-900/60 rounded-2xl bg-neutral-950 text-neutral-200 w-96 font-mono border-dashed shadow-2xl shadow-rose-950/10">
+        <div className="w-full max-w-xl mx-auto p-6 border border-rose-900/60 rounded-2xl bg-[#090d16] text-slate-200 font-mono shadow-2xl">
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2 text-rose-400">
-              <span className="text-xs">⚠️</span>
-              <h3 className="text-[10px] font-black uppercase tracking-[0.2em]">
-                UI Circuit Fault Isolated
+              <span className="text-sm">⚠️</span>
+              <h3 className="text-xs font-black uppercase tracking-wider">
+                Interface Exception Isolated
               </h3>
             </div>
-            <p className="text-[11px] text-neutral-400 leading-relaxed">
-              A fatal rendering exception occurred within a downstream layout node. The execution layer has been sandboxed to safeguard app runtime states.
+            <p className="text-xs text-slate-400 leading-relaxed">
+              A rendering exception occurred within a child component. The runtime has been sandboxed safely.
             </p>
-            <div className="mt-1 p-3 bg-neutral-900/60 border border-neutral-800/80 rounded text-[9px] text-rose-300/90 overflow-x-auto whitespace-pre-wrap max-h-24 select-all unique-scrollbar">
+            <div className="mt-1 p-3 bg-slate-900/80 border border-slate-800 rounded-xl text-xs text-rose-300 overflow-x-auto whitespace-pre-wrap max-h-32 select-all custom-scrollbar">
               {this.state.error?.toString() || "Unknown Component Exception"}
             </div>
             <button
               onClick={() => window.location.reload()}
-              className="mt-2 text-center text-[9px] font-black uppercase tracking-wider py-2 bg-neutral-900 border border-neutral-800 hover:border-neutral-600 transition-all rounded text-neutral-400 hover:text-neutral-200"
+              className="mt-2 text-center text-xs font-bold uppercase tracking-wider py-2.5 bg-slate-800 border border-slate-700 hover:border-slate-500 transition-all rounded-xl text-slate-200 cursor-pointer"
             >
-              Force Component Reset
+              Reload Dashboard
             </button>
           </div>
         </div>

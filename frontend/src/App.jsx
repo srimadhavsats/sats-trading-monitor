@@ -1,52 +1,55 @@
-import React from "react";
-// Import the global streaming state engine provider
 import { TelemetryProvider } from "./context/TelemetryContext";
-// Import technical defense sandbox shields
 import ErrorBoundary from "./components/ErrorBoundary";
-// Import downstream telemetry data consumers
+import Header from "./components/Header";
+import MarketTickerStrip from "./components/MarketTickerStrip";
 import PriceCard from "./components/PriceCard";
 import PriceSparkline from "./components/PriceSparkline";
-import SymbolSelector from "./components/SymbolSelector";
-import NetworkDiagnostics from "./components/NetworkDiagnostics";
-import RoomMetrics from "./components/RoomMetrics";
 import WhaleLedgerLog from "./components/WhaleLedgerLog";
 import ThresholdController from "./components/ThresholdController";
+import NetworkDiagnostics from "./components/NetworkDiagnostics";
+import RoomMetrics from "./components/RoomMetrics";
 import ConnectionBanner from "./components/ConnectionBanner";
+import StatusBar from "./components/StatusBar";
 
 const App = () => {
   return (
-    <div className="min-h-screen bg-black text-neutral-100 flex flex-col items-center justify-start gap-6 p-8 select-none">
-      {/* 1. Global Sandbox Error Boundary Guard */}
-      <ErrorBoundary>
-        {/* 2. Global Stream Context Node Provider */}
-        <TelemetryProvider>
-          {/* Dashboard Branding Header */}
-          <div className="flex flex-col items-center gap-1 mt-4 mb-2">
-            <h1 className="text-sm font-black uppercase tracking-[0.4em] text-neutral-400">
-              Sats Trading Monitor
-            </h1>
-            <p className="text-[9px] font-mono font-black text-neutral-600 uppercase tracking-widest">
-              High-Frequency Institutional Telemetry v4.2
-            </p>
-          </div>
+    <ErrorBoundary>
+      <TelemetryProvider>
+        <div className="min-h-screen bg-[#080b11] text-slate-100 flex flex-col justify-between selection:bg-emerald-500/20 selection:text-emerald-300">
+          {/* Top Global Command Header */}
+          <Header />
 
-          {/* 3. Stream Recovery Alerts Banner Element */}
-          <ConnectionBanner />
+          {/* Main Dashboard Viewport Container */}
+          <main className="flex-1 w-full max-w-[1600px] mx-auto px-4 lg:px-8 py-6 flex flex-col gap-6">
+            {/* Global Recovery Notice if transport drops */}
+            <ConnectionBanner />
 
-          {/* 4. Stream-Dependent Control & Display Stack */}
-          <div className="w-96 flex flex-col gap-3">
-            <SymbolSelector />
-            <PriceCard />
-            <PriceSparkline />
-          </div>
+            {/* Top Multi-Asset Overview Ticker Strip */}
+            <MarketTickerStrip />
 
-          <NetworkDiagnostics />
-          <RoomMetrics />
-          <WhaleLedgerLog />
-          <ThresholdController />
-        </TelemetryProvider>
-      </ErrorBoundary>
-    </div>
+            {/* Pro Terminal Multi-Column Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Left & Center Main Stage: Active Asset & Advanced Visualizer */}
+              <section className="lg:col-span-7 xl:col-span-8 flex flex-col gap-6">
+                <PriceCard />
+                <PriceSparkline />
+                <NetworkDiagnostics />
+              </section>
+
+              {/* Right Stage: Whale Tape, Threshold Matrix & Room Distribution */}
+              <aside className="lg:col-span-5 xl:col-span-4 flex flex-col gap-6">
+                <WhaleLedgerLog />
+                <ThresholdController />
+                <RoomMetrics />
+              </aside>
+            </div>
+          </main>
+
+          {/* Bottom Terminal Status Bar */}
+          <StatusBar />
+        </div>
+      </TelemetryProvider>
+    </ErrorBoundary>
   );
 };
 

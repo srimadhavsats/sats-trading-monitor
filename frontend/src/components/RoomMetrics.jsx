@@ -1,86 +1,93 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { CONFIG } from "../config";
+import { useTelemetry } from "../context/useTelemetry";
 
 const RoomMetrics = () => {
+  const { symbol: activeSymbol, setSymbol } = useTelemetry();
   const [roomData, setRoomData] = useState({});
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+
     const fetchRoomMetrics = async () => {
       try {
-        const baseUrl =
-          CONFIG.BACKEND_URL ||
-          CONFIG.BACKEND_WS_URL.replace("ws://", "http://").replace("/ws", "");
+        const baseUrl = CONFIG.BACKEND_URL.endsWith("/")
+          ? CONFIG.BACKEND_URL.slice(0, -1)
+          : CONFIG.BACKEND_URL;
+
         const response = await fetch(`${baseUrl}/metrics/rooms/all`);
-        if (!response.ok) throw new Error("Network metrics channel degraded");
+        if (!response.ok) throw new Error("Room metrics degraded");
 
         const data = await response.json();
-        setRoomData(data);
+        if (isMounted) setRoomData(data);
       } catch (err) {
-        console.error("── 📊 ROOM MATRIX TRACKING ANOMALY ──", err);
-      } finally {
-        setLoading(false);
+        console.error("[Room Metrics] Fetch error:", err);
       }
     };
 
     fetchRoomMetrics();
-    const pollInterval = setInterval(fetchRoomMetrics, 5000);
+    const pollInterval = setInterval(fetchRoomMetrics, 4000);
 
-    return () => clearInterval(pollInterval);
+    return () => {
+      isMounted = false;
+      clearInterval(pollInterval);
+    };
   }, []);
 
-  const activeRoomKeys = Object.keys(roomData);
-
-  if (loading) {
-    return (
-      <div className="w-96 p-4 border border-neutral-800 rounded-xl bg-neutral-900/40 animate-pulse h-20 flex items-center justify-center">
-        <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600 font-mono">
-          Aggregating Channel Matrices...
-        </span>
-      </div>
-    );
-  }
+  const totalSubscribers = Object.values(roomData).reduce((a, b) => a + b, 0);
 
   return (
-    <div className="w-96 p-5 border rounded-2xl bg-neutral-900/95 backdrop-blur-2xl border-neutral-800 font-mono flex flex-col gap-3">
-      <div className="flex flex-col gap-0.5 border-b border-neutral-800/60 pb-2">
-        <h4 className="text-[9px] font-black text-neutral-400 uppercase tracking-[0.2em]">
-          Isolated Stream Concurrency
-        </h4>
-        <p className="text-[7px] text-neutral-600 uppercase font-bold tracking-wider">
-          Active network partitions mapped across the cluster memory space
-        </p>
+    <div className="w-full p-5 rounded-2xl terminal-card font-mono flex flex-col gap-3 select-none">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-[#1a2333] pb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-cyan-400">👥</span>
+          <h3 className="text-xs font-black text-slate-200 uppercase tracking-wider">
+            Stream Concurrency & Partitioning
+          </h3>
+        </div>
+        <span className="text-[10px] font-bold text-cyan-400 bg-cyan-950/40 border border-cyan-800/40 px-2 py-0.5 rounded">
+          {totalSubscribers} Total {totalSubscribers === 1 ? "Client" : "Clients"}
+        </span>
       </div>
 
-      {activeRoomKeys.length === 0 ? (
-        <div className="py-2 text-center text-[9px] text-neutral-600 font-bold uppercase tracking-wider">
-          No active client sockets allocated to rooms
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-2">
-          {activeRoomKeys.map((room) => {
-            const count = roomData[room];
-            return (
-              <div
-                key={room}
-                className="p-3 border border-neutral-800/80 rounded-xl bg-neutral-950 flex flex-col gap-1 transition-all hover:border-neutral-700"
-              >
-                <span className="text-[8px] font-black text-neutral-500 tracking-wider">
-                  {room.replace("-", "/")}
+      {/* Room Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {CONFIG.SUPPORTED_PAIRS.map((pair) => {
+          const count = roomData[pair.id] || 0;
+          const isActive = activeSymbol === pair.id;
+
+          return (
+            <div
+              key={pair.id}
+              onClick={() => setSymbol(pair.id)}
+              className={`p-3 rounded-xl border flex flex-col gap-1 transition-all cursor-pointer ${
+                isActive
+                  ? "bg-slate-800/90 border-cyan-500/60 shadow-[0_0_15px_rgba(6,182,212,0.1)]"
+                  : "bg-[#090d16] border-[#1a2333] hover:border-slate-700"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400">
+                  {pair.symbol}
                 </span>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-xl font-black text-neutral-200 tracking-tighter tabular-nums">
-                    {count}
-                  </span>
-                  <span className="text-[7px] font-black text-neutral-600 uppercase tracking-widest">
-                    {count === 1 ? "Subscriber" : "Subscribers"}
-                  </span>
-                </div>
+                {isActive && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 live-dot" />
+                )}
               </div>
-            );
-          })}
-        </div>
-      )}
+
+              <div className="flex items-baseline gap-1.5 mt-1">
+                <span className="text-lg font-black text-slate-100 tabular-nums">
+                  {count}
+                </span>
+                <span className="text-[9px] text-slate-500 font-semibold uppercase">
+                  {count === 1 ? "node" : "nodes"}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };
